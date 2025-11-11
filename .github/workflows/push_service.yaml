@@ -17,7 +17,6 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  # Code Quality Checks
   code-quality:
     name: Code Quality & Linting
     runs-on: ubuntu-latest
@@ -56,7 +55,6 @@ jobs:
           cargo install cargo-audit
           cargo audit
 
-  # Integration Tests with Services
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
@@ -90,6 +88,20 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: notifications_db
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -114,6 +126,29 @@ jobs:
           timeout 60 bash -c 'until nc -z localhost 5672; do sleep 1; done'
           echo "Waiting for Redis..."
           timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
+          echo "Waiting for PostgreSQL..."
+          timeout 60 bash -c 'until nc -z localhost 5432; do sleep 1; done'
+
+      - name: Setup PostgreSQL schema
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d notifications_db << 'EOF'
+          CREATE TABLE IF NOT EXISTS audit_logs (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              trace_id VARCHAR(100) NOT NULL,
+              user_id UUID NOT NULL,
+              notification_type VARCHAR(50) NOT NULL,
+              template_code VARCHAR(100) NOT NULL,
+              status VARCHAR(50) NOT NULL CHECK (status IN ('queued', 'processing', 'sent', 'failed', 'dlq')),
+              error_message TEXT,
+              metadata JSONB,
+              created_at TIMESTAMP NOT NULL DEFAULT NOW()
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_trace_id ON audit_logs(trace_id);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_status ON audit_logs(status);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+          EOF
 
       - name: Create test environment file
         run: |
@@ -126,8 +161,8 @@ jobs:
           IDEMPOTENCY_TTL_SECONDS=3600
           DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
           TEMPLATE_SERVICE_URL=http://localhost:8001
-          FCM_PROJECT_ID=your_firebase_project_id_here
-          GOOGLE_APPLICATION_CREDENTIALS=service_account_json_path
+          FCM_PROJECT_ID=test_project_id
+          GOOGLE_APPLICATION_CREDENTIALS=./test_service_account.json
           CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
           CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
           CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
@@ -148,7 +183,6 @@ jobs:
       - name: Run retry integration tests
         run: cargo test --test retry_tests -- --test-threads=1
 
-  # End-to-End Tests
   e2e-tests:
     name: End-to-End Tests
     runs-on: ubuntu-latest
@@ -180,6 +214,21 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: notifications_db
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -198,6 +247,27 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Setup PostgreSQL schema
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d notifications_db << 'EOF'
+          CREATE TABLE IF NOT EXISTS audit_logs (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              trace_id VARCHAR(100) NOT NULL,
+              user_id UUID NOT NULL,
+              notification_type VARCHAR(50) NOT NULL,
+              template_code VARCHAR(100) NOT NULL,
+              status VARCHAR(50) NOT NULL CHECK (status IN ('queued', 'processing', 'sent', 'failed', 'dlq')),
+              error_message TEXT,
+              metadata JSONB,
+              created_at TIMESTAMP NOT NULL DEFAULT NOW()
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_trace_id ON audit_logs(trace_id);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_status ON audit_logs(status);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+          EOF
+
       - name: Create test environment file
         run: |
           cat > .env << EOF
@@ -209,8 +279,8 @@ jobs:
           IDEMPOTENCY_TTL_SECONDS=3600
           DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
           TEMPLATE_SERVICE_URL=http://localhost:8001
-          FCM_PROJECT_ID=your_firebase_project_id_here
-          GOOGLE_APPLICATION_CREDENTIALS=service_account_json_path
+          FCM_PROJECT_ID=test_project_id
+          GOOGLE_APPLICATION_CREDENTIALS=./test_service_account.json
           CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
           CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
           CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3

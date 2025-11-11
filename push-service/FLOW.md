@@ -140,7 +140,7 @@ INSERT INTO audit_logs (
   trace_id,
   user_id,
   notification_type,
-  template_id,
+  template_code,
   status,
   metadata,
   created_at

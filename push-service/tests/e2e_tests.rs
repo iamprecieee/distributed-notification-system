@@ -1,8 +1,8 @@
 use anyhow::Result;
 use push_service::{
     clients::{
-        circuit_breaker::CircuitBreaker, fcm::FcmClient, rbmq::RabbitMqClient, redis::RedisClient,
-        template::TemplateServiceClient,
+        circuit_breaker::CircuitBreaker, database::DatabaseClient, fcm::FcmClient,
+        rbmq::RabbitMqClient, redis::RedisClient, template::TemplateServiceClient,
     },
     config::Config,
     models::{message::NotificationMessage, status::IdempotencyStatus},
@@ -17,6 +17,7 @@ async fn test_end_to_end_notification_success_flow() -> Result<()> {
     let config = Config::load()?;
     RabbitMqClient::connect(&config).await?;
     let mut redis_client = RedisClient::connect(&config).await?;
+    let database_client = DatabaseClient::connect(&config.database_url).await?;
 
     let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
     let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
@@ -46,6 +47,7 @@ async fn test_end_to_end_notification_success_flow() -> Result<()> {
         &mut redis_client,
         &mut template_service_client,
         &mut fcm_client,
+        &database_client,
     )
     .await;
 
@@ -81,6 +83,7 @@ async fn test_end_to_end_notification_success_flow() -> Result<()> {
 async fn test_end_to_end_duplicate_rejection() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
+    let database_client = DatabaseClient::connect(&config.database_url).await?;
 
     let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
     let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
@@ -108,6 +111,7 @@ async fn test_end_to_end_duplicate_rejection() -> Result<()> {
         &mut redis_client,
         &mut template_service_client,
         &mut fcm_client,
+        &database_client,
     )
     .await;
 
@@ -126,6 +130,7 @@ async fn test_end_to_end_duplicate_rejection() -> Result<()> {
             &mut redis_client,
             &mut template_service_client,
             &mut fcm_client,
+            &database_client,
         )
         .await;
         assert!(result2.is_ok(), "Duplicate should be silently handled");
@@ -158,6 +163,7 @@ async fn test_end_to_end_duplicate_rejection() -> Result<()> {
 async fn test_end_to_end_invalid_json_rejection() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
+    let database_client = DatabaseClient::connect(&config.database_url).await?;
 
     let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
     let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
@@ -184,6 +190,7 @@ async fn test_end_to_end_invalid_json_rejection() -> Result<()> {
         &mut redis_client,
         &mut template_service_client,
         &mut fcm_client,
+        &database_client,
     )
     .await;
 
@@ -197,6 +204,7 @@ async fn test_end_to_end_invalid_json_rejection() -> Result<()> {
 async fn test_end_to_end_complete_message_processing() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
+    let database_client = DatabaseClient::connect(&config.database_url).await?;
 
     let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
     let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
@@ -227,7 +235,7 @@ async fn test_end_to_end_complete_message_processing() -> Result<()> {
     let message = NotificationMessage {
         trace_id: "trace_complete_001".to_string(),
         idempotency_key: format!("complete_{}", Uuid::new_v4()),
-        user_id: "user_12345".to_string(),
+        user_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
         notification_type: "push".to_string(),
         recipient: "device_token_abc123".to_string(),
         template_code: "USER_LOGIN".to_string(),
@@ -243,6 +251,7 @@ async fn test_end_to_end_complete_message_processing() -> Result<()> {
         &mut redis_client,
         &mut template_service_client,
         &mut fcm_client,
+        &database_client,
     )
     .await;
 
@@ -265,6 +274,7 @@ async fn test_end_to_end_complete_message_processing() -> Result<()> {
 async fn test_end_to_end_graceful_degradation() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
+    let database_client = DatabaseClient::connect(&config.database_url).await?;
 
     let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
     let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
@@ -292,6 +302,7 @@ async fn test_end_to_end_graceful_degradation() -> Result<()> {
         &mut redis_client,
         &mut template_service_client,
         &mut fcm_client,
+        &database_client,
     )
     .await;
 
@@ -322,6 +333,9 @@ async fn test_end_to_end_high_throughput() -> Result<()> {
 
         let handle = tokio::spawn(async move {
             let mut redis = RedisClient::connect(&config_clone).await.unwrap();
+            let database = DatabaseClient::connect(&config_clone.database_url)
+                .await
+                .unwrap();
 
             let redis_for_cb = redis::Client::open(config_clone.redis_url.as_str()).unwrap();
             let redis_conn = redis_for_cb
@@ -349,8 +363,14 @@ async fn test_end_to_end_high_throughput() -> Result<()> {
             let message = create_notification_message(&format!("throughput_{}", i));
             let payload = serde_json::to_string(&message).unwrap();
 
-            let _ =
-                process_message(&payload, &mut redis, &mut template_service, &mut fcm_client).await;
+            let _ = process_message(
+                &payload,
+                &mut redis,
+                &mut template_service,
+                &mut fcm_client,
+                &database,
+            )
+            .await;
 
             let status = redis
                 .check_idempotency(&message.idempotency_key)
@@ -421,6 +441,7 @@ async fn test_end_to_end_message_ordering() -> Result<()> {
 #[tokio::test]
 async fn test_end_to_end_redis_resilience() -> Result<()> {
     let config = Config::load()?;
+    let database_client = DatabaseClient::connect(&config.database_url).await?;
 
     let redis_for_cb = redis::Client::open(config.redis_url.as_str())?;
     let redis_conn = redis_for_cb.get_multiplexed_async_connection().await?;
@@ -450,6 +471,7 @@ async fn test_end_to_end_redis_resilience() -> Result<()> {
         &mut redis_client,
         &mut template_service_client,
         &mut fcm_client,
+        &database_client,
     )
     .await;
 
@@ -483,7 +505,7 @@ fn create_notification_message(suffix: &str) -> NotificationMessage {
     NotificationMessage {
         trace_id: format!("trace_{}", suffix),
         idempotency_key: format!("idem_{}_{}", suffix, Uuid::new_v4()),
-        user_id: format!("user_{}", suffix),
+        user_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
         notification_type: "push".to_string(),
         recipient: format!("device_token_{}", suffix),
         template_code: "TEST_TEMPLATE".to_string(),

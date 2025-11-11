@@ -3,9 +3,17 @@ use tokio::time::{Duration, sleep};
 use tracing::{debug, info, warn};
 
 use crate::{
-    clients::{fcm::FcmClient, redis::RedisClient, template::TemplateServiceClient},
+    clients::{
+        database::DatabaseClient, fcm::FcmClient, redis::RedisClient,
+        template::TemplateServiceClient,
+    },
     config::Config,
-    models::{message::NotificationMessage, retry::RetryConfig, status::IdempotencyStatus},
+    models::{
+        audit::CreateAuditLog,
+        message::NotificationMessage,
+        retry::RetryConfig,
+        status::{IdempotencyStatus, NotificationStatus},
+    },
 };
 
 pub async fn process_message(
@@ -13,6 +21,7 @@ pub async fn process_message(
     redis_client: &mut RedisClient,
     template_service_client: &mut TemplateServiceClient,
     fcm_client: &mut FcmClient,
+    database_client: &DatabaseClient,
 ) -> Result<(), Error> {
     let message = serde_json::from_str::<NotificationMessage>(payload)?;
 
@@ -58,6 +67,21 @@ pub async fn process_message(
             redis_client
                 .mark_as_failed(&message.idempotency_key)
                 .await?;
+
+            let audit_log = CreateAuditLog::new(
+                message.trace_id.clone(),
+                message.user_id.clone(),
+                message.notification_type.clone(),
+                message.template_code.clone(),
+                NotificationStatus::Failed,
+            )
+            .with_error(format!("Template fetch failed: {}", e))
+            .with_metadata(serde_json::to_value(message.metadata.clone())?);
+
+            if let Err(log_err) = database_client.log_notification(audit_log).await {
+                warn!(error = %log_err, "Failed to write audit log");
+            }
+
             return Err(anyhow!("Failed to fetch template: {}", e));
         }
     };
@@ -71,6 +95,21 @@ pub async fn process_message(
             redis_client
                 .mark_as_failed(&message.idempotency_key)
                 .await?;
+
+            let audit_log = CreateAuditLog::new(
+                message.trace_id.clone(),
+                message.user_id.clone(),
+                message.notification_type.clone(),
+                message.template_code.clone(),
+                NotificationStatus::Failed,
+            )
+            .with_error(format!("Template render failed: {}", e))
+            .with_metadata(serde_json::to_value(message.metadata.clone())?);
+
+            if let Err(log_err) = database_client.log_notification(audit_log).await {
+                warn!(error = %log_err, "Failed to write audit log");
+            }
+
             return Err(anyhow!("Failed to render template: {}", e));
         }
     };
@@ -88,6 +127,19 @@ pub async fn process_message(
         Ok(_) => {
             redis_client.mark_as_sent(&message.idempotency_key).await?;
 
+            let audit_log = CreateAuditLog::new(
+                message.trace_id.clone(),
+                message.user_id.clone(),
+                message.notification_type.clone(),
+                message.template_code.clone(),
+                NotificationStatus::Sent,
+            )
+            .with_metadata(serde_json::to_value(message.metadata.clone())?);
+
+            if let Err(log_err) = database_client.log_notification(audit_log).await {
+                warn!(error = %log_err, "Failed to write audit log");
+            }
+
             info!(
                 trace_id = %message.trace_id,
                 idempotency_key = %message.idempotency_key,
@@ -99,6 +151,20 @@ pub async fn process_message(
             redis_client
                 .mark_as_failed(&message.idempotency_key)
                 .await?;
+
+            let audit_log = CreateAuditLog::new(
+                message.trace_id.clone(),
+                message.user_id.clone(),
+                message.notification_type.clone(),
+                message.template_code.clone(),
+                NotificationStatus::Failed,
+            )
+            .with_error(format!("FCM send failed: {}", e))
+            .with_metadata(serde_json::to_value(message.metadata.clone())?);
+
+            if let Err(log_err) = database_client.log_notification(audit_log).await {
+                warn!(error = %log_err, "Failed to write audit log");
+            }
 
             Err(anyhow!("Notification failed: {}", e))
         }

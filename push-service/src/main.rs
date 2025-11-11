@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use anyhow::{Error, Result, anyhow};
+use anyhow::{Error, Result};
 use chrono::{SecondsFormat, Utc};
 use push_service::{
     clients::{
-        circuit_breaker::CircuitBreaker, fcm::FcmClient, rbmq::RabbitMqClient, redis::RedisClient,
-        template::TemplateServiceClient,
+        circuit_breaker::CircuitBreaker, database::DatabaseClient, fcm::FcmClient,
+        rbmq::RabbitMqClient, redis::RedisClient, template::TemplateServiceClient,
     },
     config::Config,
     models::message::{DlqMessage, NotificationMessage},
@@ -25,10 +25,6 @@ async fn main() -> Result<(), Error> {
         .with_line_number(true)
         .init();
 
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .map_err(|_| anyhow!("Failed to install rustls crypto provider"))?;
-
     let config = Config::load()?;
 
     info!("Push service starting");
@@ -36,6 +32,8 @@ async fn main() -> Result<(), Error> {
 
     let rabbitmq_client = Arc::new(RabbitMqClient::connect(&config).await?);
     let mut consumer = rabbitmq_client.create_consumer().await?;
+
+    let database_client = Arc::new(DatabaseClient::connect(&config.database_url).await?);
 
     let redis_client = redis::Client::open(config.redis_url.as_str())?;
     let redis_conn = redis_client.get_multiplexed_async_connection().await?;
@@ -76,6 +74,7 @@ async fn main() -> Result<(), Error> {
                 let rabbitmq_client = Arc::clone(&rabbitmq_client);
                 let template_service_client = Arc::clone(&template_service_client);
                 let fcm_client = Arc::clone(&fcm_client);
+                let database_client = Arc::clone(&database_client);
                 let semaphore = Arc::clone(&semaphore);
                 let config = config.clone();
 
@@ -101,8 +100,9 @@ async fn main() -> Result<(), Error> {
                     match process_message(
                         &payload,
                         &mut redis_client,
-                        &mut *template_client,
-                        &mut *fcm,
+                        &mut template_client,
+                        &mut fcm,
+                        &database_client,
                     )
                     .await
                     {
