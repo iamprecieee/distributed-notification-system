@@ -16,8 +16,7 @@ pub struct Config {
 
     pub template_service_url: String,
 
-    pub fcm_server_key: String,
-    pub fcm_url: String,
+    pub fcm_project_id: String,
 
     pub circuit_breaker_failure_threshold: u32,
     pub circuit_breaker_timeout_seconds: u64,

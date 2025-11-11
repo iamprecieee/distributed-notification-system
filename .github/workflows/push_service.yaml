@@ -126,8 +126,8 @@ jobs:
           IDEMPOTENCY_TTL_SECONDS=3600
           DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
           TEMPLATE_SERVICE_URL=http://localhost:8001
-          FCM_SERVER_KEY=test_fcm_key
-          FCM_URL=https://fcm.googleapis.com/fcm/send
+          FCM_PROJECT_ID=your_firebase_project_id_here
+          GOOGLE_APPLICATION_CREDENTIALS=service_account_json_path
           CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
           CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
           CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
@@ -147,20 +147,6 @@ jobs:
 
       - name: Run retry integration tests
         run: cargo test --test retry_tests -- --test-threads=1
-
-      - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
-
-      - name: Generate integration test coverage
-        run: |
-          cargo tarpaulin --tests --out Xml --output-dir ./coverage
-
-      - name: Upload integration test coverage
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage/cobertura.xml
-          flags: integrationtests
-          name: integration-test-coverage
 
   # End-to-End Tests
   e2e-tests:
@@ -223,8 +209,8 @@ jobs:
           IDEMPOTENCY_TTL_SECONDS=3600
           DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
           TEMPLATE_SERVICE_URL=http://localhost:8001
-          FCM_SERVER_KEY=test_fcm_key
-          FCM_URL=https://fcm.googleapis.com/fcm/send
+          FCM_PROJECT_ID=your_firebase_project_id_here
+          GOOGLE_APPLICATION_CREDENTIALS=service_account_json_path
           CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
           CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
           CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
@@ -238,17 +224,3 @@ jobs:
 
       - name: Run end-to-end workflow tests
         run: cargo test --test e2e_tests -- --test-threads=1
-
-      - name: Install cargo-tarpaulin
-        run: cargo install cargo-tarpaulin
-
-      - name: Generate E2E test coverage
-        run: |
-          cargo tarpaulin --test e2e_tests --out Xml --output-dir ./coverage
-
-      - name: Upload E2E test coverage
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage/cobertura.xml
-          flags: e2etests
-          name: e2e-test-coverage

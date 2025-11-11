@@ -1,7 +1,9 @@
 use anyhow::{Error, Result};
 use chrono::{SecondsFormat, Utc};
 use push_service::{
-    clients::{rbmq::RabbitMqClient, redis::RedisClient, template::TemplateServiceClient},
+    clients::{
+        fcm::FcmClient, rbmq::RabbitMqClient, redis::RedisClient, template::TemplateServiceClient,
+    },
     config::Config,
     models::message::{DlqMessage, NotificationMessage},
     utils::process_message,
@@ -22,13 +24,22 @@ async fn main() -> Result<(), Error> {
 
     let template_service_client = TemplateServiceClient::new(&config).await?;
 
+    let fcm_client = FcmClient::new(&config).await;
+
     while let Some(delivery) = consumer.next().await {
         match delivery {
             Ok(delivery) => {
                 let delivery_tag = delivery.delivery_tag;
                 let payload = String::from_utf8_lossy(&delivery.data);
 
-                match process_message(&payload, &mut redis_client, &template_service_client).await {
+                match process_message(
+                    &payload,
+                    &mut redis_client,
+                    &template_service_client,
+                    &fcm_client,
+                )
+                .await
+                {
                     Ok(_) => {
                         println!("Message processed successfully");
                         rabbitmq_client.acknowledge(delivery_tag).await?;

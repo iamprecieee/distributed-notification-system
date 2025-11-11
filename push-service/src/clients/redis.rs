@@ -1,11 +1,16 @@
 use anyhow::{Error, Result, anyhow};
 use redis::{AsyncCommands, Client, aio::MultiplexedConnection};
 
-use crate::{config::Config, models::status::IdempotencyStatus};
+use crate::{
+    config::Config,
+    models::{retry::RetryConfig, status::IdempotencyStatus},
+    utils::retry_with_backoff,
+};
 
 pub struct RedisClient {
     connection: MultiplexedConnection,
     idempotency_ttl_seconds: u64,
+    retry_config: RetryConfig,
 }
 
 impl RedisClient {
@@ -25,6 +30,7 @@ impl RedisClient {
         Ok(Self {
             connection,
             idempotency_ttl_seconds: config.idempotency_ttl_seconds,
+            retry_config: RetryConfig::from_config(config),
         })
     }
 
@@ -69,10 +75,19 @@ impl RedisClient {
     pub async fn mark_as_sent(&mut self, idempotency_key: &str) -> Result<(), Error> {
         let key = format!("idempotency:{}", idempotency_key);
 
-        self.connection
-            .set_ex::<_, _, ()>(&key, "sent", self.idempotency_ttl_seconds)
-            .await
-            .map_err(|_| anyhow!("Failed to mark value as sent"))?;
+        retry_with_backoff(&self.retry_config, || {
+            let key_clone = key.clone();
+            let mut conn = self.connection.clone();
+            let ttl = self.idempotency_ttl_seconds;
+
+            async move {
+                conn.set_ex::<_, _, ()>(&key_clone, "sent", ttl)
+                    .await
+                    .map_err(|e| e.to_string())
+            }
+        })
+        .await
+        .map_err(|e| anyhow!("mark_as_sent failed: {}", e))?;
 
         Ok(())
     }

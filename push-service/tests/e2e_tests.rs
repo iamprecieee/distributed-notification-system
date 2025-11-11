@@ -1,6 +1,8 @@
 use anyhow::Result;
 use push_service::{
-    clients::{rbmq::RabbitMqClient, redis::RedisClient, template::TemplateServiceClient},
+    clients::{
+        fcm::FcmClient, rbmq::RabbitMqClient, redis::RedisClient, template::TemplateServiceClient,
+    },
     config::Config,
     models::{message::NotificationMessage, status::IdempotencyStatus},
     utils::process_message,
@@ -16,12 +18,20 @@ async fn test_end_to_end_notification_success_flow() -> Result<()> {
     let mut redis_client = RedisClient::connect(&config).await?;
     let template_service_client = TemplateServiceClient::new(&config).await?;
 
+    let fcm_client = FcmClient::new(&config).await;
+
     let message = create_notification_message("e2e_success");
     let payload = serde_json::to_string(&message)?;
 
     publish_message(&config, &message).await?;
 
-    let result = process_message(&payload, &mut redis_client, &template_service_client).await;
+    let result = process_message(
+        &payload,
+        &mut redis_client,
+        &template_service_client,
+        &fcm_client,
+    )
+    .await;
 
     // Note: This might fail if template service is not running, which is acceptable
     // The test validates the idempotency behavior regardless
@@ -58,11 +68,18 @@ async fn test_end_to_end_duplicate_rejection() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
     let template_service_client = TemplateServiceClient::new(&config).await?;
+    let fcm_client = FcmClient::new(&config).await;
 
     let message = create_notification_message("e2e_duplicate");
     let payload = serde_json::to_string(&message)?;
 
-    let first_result = process_message(&payload, &mut redis_client, &template_service_client).await;
+    let first_result = process_message(
+        &payload,
+        &mut redis_client,
+        &template_service_client,
+        &fcm_client,
+    )
+    .await;
 
     let status_after_first = redis_client
         .check_idempotency(&message.idempotency_key)
@@ -74,7 +91,13 @@ async fn test_end_to_end_duplicate_rejection() -> Result<()> {
     );
 
     if first_result.is_ok() {
-        let result2 = process_message(&payload, &mut redis_client, &template_service_client).await;
+        let result2 = process_message(
+            &payload,
+            &mut redis_client,
+            &template_service_client,
+            &fcm_client,
+        )
+        .await;
         assert!(result2.is_ok(), "Duplicate should be silently handled");
 
         let status_after_second = redis_client
@@ -107,11 +130,17 @@ async fn test_end_to_end_invalid_json_rejection() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
     let template_service_client = TemplateServiceClient::new(&config).await?;
+    let fcm_client = FcmClient::new(&config).await;
 
     let invalid_payload = "{ invalid json }";
 
-    let result =
-        process_message(invalid_payload, &mut redis_client, &template_service_client).await;
+    let result = process_message(
+        invalid_payload,
+        &mut redis_client,
+        &template_service_client,
+        &fcm_client,
+    )
+    .await;
 
     assert!(result.is_err(), "Invalid JSON should fail processing");
 
@@ -124,6 +153,7 @@ async fn test_end_to_end_complete_message_processing() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
     let template_service_client = TemplateServiceClient::new(&config).await?;
+    let fcm_client = FcmClient::new(&config).await;
 
     let mut variables = HashMap::new();
     variables.insert("user_name".to_string(), serde_json::json!("Alice"));
@@ -147,7 +177,13 @@ async fn test_end_to_end_complete_message_processing() -> Result<()> {
 
     let payload = serde_json::to_string(&message)?;
 
-    let _ = process_message(&payload, &mut redis_client, &template_service_client).await;
+    let _ = process_message(
+        &payload,
+        &mut redis_client,
+        &template_service_client,
+        &fcm_client,
+    )
+    .await;
 
     let status = redis_client
         .check_idempotency(&message.idempotency_key)
@@ -169,11 +205,18 @@ async fn test_end_to_end_graceful_degradation() -> Result<()> {
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
     let template_service_client = TemplateServiceClient::new(&config).await?;
+    let fcm_client = FcmClient::new(&config).await;
 
     let message = create_notification_message("e2e_degradation");
     let payload = serde_json::to_string(&message)?;
 
-    let _ = process_message(&payload, &mut redis_client, &template_service_client).await;
+    let _ = process_message(
+        &payload,
+        &mut redis_client,
+        &template_service_client,
+        &fcm_client,
+    )
+    .await;
 
     // Verify idempotency was set (regardless of template service availability)
     let status = redis_client
@@ -204,11 +247,12 @@ async fn test_end_to_end_high_throughput() -> Result<()> {
         let handle = tokio::spawn(async move {
             let mut redis = RedisClient::connect(&config_clone).await.unwrap();
             let template_service = TemplateServiceClient::new(&config_clone).await.unwrap();
+            let fcm_client = FcmClient::new(&config_clone).await;
 
             let message = create_notification_message(&format!("throughput_{}", i));
             let payload = serde_json::to_string(&message).unwrap();
 
-            let _ = process_message(&payload, &mut redis, &template_service).await;
+            let _ = process_message(&payload, &mut redis, &template_service, &fcm_client).await;
 
             let status = redis
                 .check_idempotency(&message.idempotency_key)
@@ -281,13 +325,20 @@ async fn test_end_to_end_message_ordering() -> Result<()> {
 async fn test_end_to_end_redis_resilience() -> Result<()> {
     let config = Config::load()?;
     let template_service_client = TemplateServiceClient::new(&config).await?;
+    let fcm_client = FcmClient::new(&config).await;
 
     let message = create_notification_message("redis_resilience");
     let payload = serde_json::to_string(&message)?;
 
     let mut redis_client = RedisClient::connect(&config).await?;
 
-    let _ = process_message(&payload, &mut redis_client, &template_service_client).await;
+    let _ = process_message(
+        &payload,
+        &mut redis_client,
+        &template_service_client,
+        &fcm_client,
+    )
+    .await;
 
     let status_result = redis_client
         .check_idempotency(&message.idempotency_key)

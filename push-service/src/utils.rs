@@ -2,7 +2,7 @@ use anyhow::{Error, Result, anyhow};
 use tokio::time::{Duration, sleep};
 
 use crate::{
-    clients::{redis::RedisClient, template::TemplateServiceClient},
+    clients::{fcm::FcmClient, redis::RedisClient, template::TemplateServiceClient},
     config::Config,
     models::{message::NotificationMessage, retry::RetryConfig, status::IdempotencyStatus},
 };
@@ -11,6 +11,7 @@ pub async fn process_message(
     payload: &str,
     redis_client: &mut RedisClient,
     template_service_client: &TemplateServiceClient,
+    fcm_client: &FcmClient,
 ) -> Result<(), Error> {
     let message = serde_json::from_str::<NotificationMessage>(payload)?;
 
@@ -49,7 +50,7 @@ pub async fn process_message(
         }
     };
 
-    match template_service_client.render_template(&template, &message.variables) {
+    let rendered = match template_service_client.render_template(&template, &message.variables) {
         Ok(rendered) => {
             println!("  - Template: Rendered successfully");
             rendered
@@ -62,7 +63,30 @@ pub async fn process_message(
         }
     };
 
-    Ok(())
+    match fcm_client
+        .send_notification(
+            &message.recipient,
+            &rendered.title,
+            &rendered.body,
+            &message.trace_id,
+            None,
+        )
+        .await
+    {
+        Ok(_) => {
+            redis_client.mark_as_sent(&message.idempotency_key).await?;
+
+            println!("Notification sent successfully");
+            Ok(())
+        }
+        Err(e) => {
+            redis_client
+                .mark_as_failed(&message.idempotency_key)
+                .await?;
+
+            Err(anyhow!("Notification failed: {}", e))
+        }
+    }
 }
 
 impl RetryConfig {
