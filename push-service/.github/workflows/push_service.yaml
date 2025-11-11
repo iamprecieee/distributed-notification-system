@@ -1,0 +1,257 @@
+name: Push Service CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # Code Quality Checks
+  code-quality:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check code formatting
+        run: cargo fmt -- --check
+
+      - name: Run Clippy linter
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Check for security vulnerabilities
+        run: |
+          cargo install cargo-audit
+          cargo audit
+
+  # Integration Tests with Services
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13-management-alpine
+        ports:
+          - 5672:5672
+          - 15672:15672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for RabbitMQ..."
+          timeout 60 bash -c 'until nc -z localhost 5672; do sleep 1; done'
+          echo "Waiting for Redis..."
+          timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
+          echo "Waiting for PostgreSQL..."
+          timeout 60 bash -c 'until nc -z localhost 5432; do sleep 1; done'
+
+      - name: Create test environment file
+        run: |
+          cat > .env << EOF
+          RABBITMQ_URL=amqp://guest:guest@localhost:5672/%2f
+          PUSH_QUEUE_NAME=push_notifications
+          FAILED_QUEUE_NAME=failed_notifications
+          PREFETCH_COUNT=10
+          REDIS_URL=redis://localhost:6379/0
+          IDEMPOTENCY_TTL_SECONDS=3600
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
+          TEMPLATE_SERVICE_URL=http://localhost:8001
+          FCM_SERVER_KEY=test_fcm_key
+          FCM_URL=https://fcm.googleapis.com/fcm/send
+          CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+          CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
+          CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
+          MAX_RETRY_ATTEMPTS=5
+          INITIAL_RETRY_DELAY_MS=100
+          MAX_RETRY_DELAY_MS=5000
+          RETRY_BACKOFF_MULTIPLIER=2
+          WORKER_CONCURRENCY=4
+          SERVER_PORT=8080
+          EOF
+
+      - name: Run idempotency integration tests
+        run: cargo test --test idempotency_tests -- --test-threads=1
+
+      - name: Run queue integration tests
+        run: cargo test --test queue_tests -- --test-threads=1
+
+      - name: Run retry integration tests
+        run: cargo test --test retry_tests -- --test-threads=1
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Generate integration test coverage
+        run: |
+          cargo tarpaulin --tests --out Xml --output-dir ./coverage
+
+      - name: Upload integration test coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/cobertura.xml
+          flags: integrationtests
+          name: integration-test-coverage
+
+  # End-to-End Tests
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13-management-alpine
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: notifications_db
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Create test environment file
+        run: |
+          cat > .env << EOF
+          RABBITMQ_URL=amqp://guest:guest@localhost:5672/%2f
+          PUSH_QUEUE_NAME=push_notifications
+          FAILED_QUEUE_NAME=failed_notifications
+          PREFETCH_COUNT=10
+          REDIS_URL=redis://localhost:6379/0
+          IDEMPOTENCY_TTL_SECONDS=3600
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
+          TEMPLATE_SERVICE_URL=http://localhost:8001
+          FCM_SERVER_KEY=test_fcm_key
+          FCM_URL=https://fcm.googleapis.com/fcm/send
+          CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+          CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
+          CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
+          MAX_RETRY_ATTEMPTS=5
+          INITIAL_RETRY_DELAY_MS=100
+          MAX_RETRY_DELAY_MS=5000
+          RETRY_BACKOFF_MULTIPLIER=2
+          WORKER_CONCURRENCY=4
+          SERVER_PORT=8080
+          EOF
+
+      - name: Run end-to-end workflow tests
+        run: cargo test --test e2e_tests -- --test-threads=1
+
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+
+      - name: Generate E2E test coverage
+        run: |
+          cargo tarpaulin --test e2e_tests --out Xml --output-dir ./coverage
+
+      - name: Upload E2E test coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/cobertura.xml
+          flags: e2etests
+          name: e2e-test-coverage

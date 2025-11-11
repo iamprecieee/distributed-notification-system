@@ -2,3 +2,4 @@ Cargo.lock
 target/
 README.MD
 .env
+coverage

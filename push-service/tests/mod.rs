@@ -1,2 +1,4 @@
-pub mod idempotency_test;
-pub mod queue_test;
+pub mod e2e_tests;
+pub mod idempotency_tests;
+pub mod queue_tests;
+pub mod retry_tests;

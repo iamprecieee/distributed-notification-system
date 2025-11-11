@@ -109,11 +109,7 @@ where
 
                 sleep(Duration::from_millis(jittered_delay)).await;
 
-                attempt += 1;
-                delay_ms = std::cmp::min(
-                    delay_ms * config.backoff_multiplier as u64,
-                    config.max_delay_ms,
-                );
+                delay_ms = std::cmp::min(delay_ms * config.backoff_multiplier, config.max_delay_ms);
             }
         }
     }
