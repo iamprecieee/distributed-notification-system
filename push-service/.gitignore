@@ -3,3 +3,6 @@ target/
 README.MD
 .env
 coverage
+.ruff_cache/
+.venv/
+*service-account.json

@@ -2,6 +2,7 @@ use std::{collections::HashMap, time::Duration};
 
 use anyhow::{Error, Result, anyhow};
 use reqwest::Client;
+use tracing::{debug, info, warn};
 
 use crate::{
     clients::circuit_breaker::CircuitBreaker,
@@ -27,6 +28,8 @@ impl TemplateServiceClient {
             .build()
             .map_err(|_| anyhow!("Failed to create HTTP client"))?;
 
+        info!(base_url = %config.template_service_url, "Template service client initialized");
+
         Ok(Self {
             http_client,
             base_url: config.template_service_url.clone(),
@@ -46,15 +49,21 @@ impl TemplateServiceClient {
             self.base_url, template_code, language
         );
 
+        debug!(
+            template_code,
+            language,
+            "Fetching template from service"
+        );
+
         let http_client = self.http_client.clone();
         let retry_config = self.retry_config.clone();
 
         self.circuit_breaker
-            .call(|| Self::fetch_with_retry(http_client.clone(), retry_config.clone(), url.clone()))
+            .call(|| Self::fetch_with_retry_static(http_client.clone(), retry_config.clone(), url.clone()))
             .await
     }
 
-    async fn fetch_with_retry(
+    async fn fetch_with_retry_static(
         http_client: Client,
         retry_config: RetryConfig,
         url: String,
@@ -92,6 +101,12 @@ impl TemplateServiceClient {
         template: &Template,
         variables: &HashMap<String, serde_json::Value>,
     ) -> Result<TemplateContent, Error> {
+        debug!(
+            template_code = %template.code,
+            variable_count = variables.len(),
+            "Rendering template"
+        );
+
         let title = Self::replace_variables(&template.content.title, variables)?;
         let body = Self::replace_variables(&template.content.body, variables)?;
 
@@ -124,6 +139,11 @@ impl TemplateServiceClient {
             let start = result.find("{{").unwrap();
             let end = result[start..].find("}}").unwrap() + start + 2;
             let missing_var = &result[start..end];
+
+            warn!(
+                missing_variable = %missing_var,
+                "Template contains unreplaced variable"
+            );
 
             return Err(anyhow!("Missing variable in template: {}", missing_var));
         }

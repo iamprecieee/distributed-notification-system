@@ -1,8 +1,10 @@
 use anyhow::{Error, Result, anyhow};
 use tokio::time::{Duration, sleep};
+use tracing::{debug, info, warn};
 
 use crate::{
     clients::{fcm::FcmClient, redis::RedisClient, template::TemplateServiceClient},
+    config::Config,
     models::{message::NotificationMessage, retry::RetryConfig, status::IdempotencyStatus},
 };
 
@@ -14,22 +16,33 @@ pub async fn process_message(
 ) -> Result<(), Error> {
     let message = serde_json::from_str::<NotificationMessage>(payload)?;
 
+    info!(
+        trace_id = %message.trace_id,
+        idempotency_key = %message.idempotency_key,
+        user_id = %message.user_id,
+        "Processing notification message"
+    );
+
     match redis_client
         .check_idempotency(&message.idempotency_key)
         .await
     {
         Ok(IdempotencyStatus::Sent) => {
-            println!("Message already processed, skipping.");
+            info!(
+                idempotency_key = %message.idempotency_key,
+                "Message already processed, skipping"
+            );
             return Ok(());
         }
         Ok(IdempotencyStatus::Processing) => {
-            println!("Message is being processed elsewhere, skipping.");
+            info!(
+                idempotency_key = %message.idempotency_key,
+                "Message is being processed elsewhere, skipping"
+            );
             return Ok(());
         }
         _ => {}
     }
-
-    println!("Processing notification message");
 
     redis_client
         .mark_as_processing(&message.idempotency_key)
@@ -51,7 +64,7 @@ pub async fn process_message(
 
     let rendered = match template_service_client.render_template(&template, &message.variables) {
         Ok(rendered) => {
-            println!("  - Template: Rendered successfully");
+            debug!(template_code = %message.template_code, "Template rendered successfully");
             rendered
         }
         Err(e) => {
@@ -75,7 +88,11 @@ pub async fn process_message(
         Ok(_) => {
             redis_client.mark_as_sent(&message.idempotency_key).await?;
 
-            println!("Notification sent successfully");
+            info!(
+                trace_id = %message.trace_id,
+                idempotency_key = %message.idempotency_key,
+                "Notification sent successfully"
+            );
             Ok(())
         }
         Err(e) => {
@@ -84,6 +101,17 @@ pub async fn process_message(
                 .await?;
 
             Err(anyhow!("Notification failed: {}", e))
+        }
+    }
+}
+
+impl RetryConfig {
+    pub fn from_config(config: &Config) -> Self {
+        Self {
+            max_attempts: config.max_retry_attempts,
+            initial_delay_ms: config.initial_retry_delay_ms,
+            max_delay_ms: config.max_retry_delay_ms,
+            backoff_multiplier: config.retry_backoff_multiplier,
         }
     }
 }
@@ -103,18 +131,30 @@ where
         match operation().await {
             Ok(result) => {
                 if attempt > 1 {
-                    println!(
-                        "  - Retry: Succeeded on attempt {}/{}",
-                        attempt, config.max_attempts
+                    info!(
+                        attempt,
+                        max_attempts = config.max_attempts,
+                        "Retry succeeded"
                     );
                 }
                 return Ok(result);
             }
             Err(e) => {
                 if attempt >= config.max_attempts {
-                    println!("  - Retry: Failed after {} attempts", config.max_attempts);
+                    warn!(
+                        max_attempts = config.max_attempts,
+                        error = %e,
+                        "Retry failed after exhausting all attempts"
+                    );
                     return Err(e);
                 }
+
+                debug!(
+                    attempt,
+                    max_attempts = config.max_attempts,
+                    delay_ms,
+                    "Retry attempt failed, backing off"
+                );
 
                 let jitter = rand::random_range(-0.1..=0.1);
 

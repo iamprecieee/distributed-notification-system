@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
+use anyhow::{Error, Result, anyhow};
 use chrono::{SecondsFormat, Utc};
 use push_service::{
     clients::{
-        circuit_breaker::CircuitBreaker, fcm::FcmClient, rbmq::RabbitMqClient, redis::RedisClient,
-        template::TemplateServiceClient,
+        circuit_breaker::CircuitBreaker, fcm::FcmClient, rbmq::RabbitMqClient,
+        redis::RedisClient, template::TemplateServiceClient,
     },
     config::Config,
     models::message::{DlqMessage, NotificationMessage},
@@ -14,12 +14,25 @@ use push_service::{
 
 use futures_util::StreamExt;
 use tokio::sync::{Mutex, Semaphore};
+use tracing::{error, info, warn};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .with_thread_ids(true)
+        .with_level(true)
+        .with_line_number(true)
+        .init();
+
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .map_err(|_| anyhow!("Failed to install rustls crypto provider"))?;
+
     let config = Config::load()?;
 
-    println!("Configuration validated. Worker is ready to start.");
+    info!("Push service starting");
+    info!("Configuration validated");
 
     let rabbitmq_client = Arc::new(RabbitMqClient::connect(&config).await?);
     let mut consumer = rabbitmq_client.create_consumer().await?;
@@ -43,15 +56,13 @@ async fn main() -> Result<(), Error> {
         TemplateServiceClient::new(&config, template_circuit_breaker).await?,
     ));
 
-    let fcm_client = Arc::new(Mutex::new(
-        FcmClient::new(&config, fcm_circuit_breaker).await,
-    ));
+    let fcm_client = Arc::new(Mutex::new(FcmClient::new(&config, fcm_circuit_breaker).await));
 
     let semaphore = Arc::new(Semaphore::new(config.worker_concurrency));
 
-    println!(
-        "Worker started with concurrency limit: {}",
-        config.worker_concurrency
+    info!(
+        concurrency = config.worker_concurrency,
+        "Worker started with concurrency limit"
     );
 
     while let Some(delivery) = consumer.next().await {
@@ -72,11 +83,11 @@ async fn main() -> Result<(), Error> {
                     let mut redis_client = match RedisClient::connect(&config).await {
                         Ok(client) => client,
                         Err(e) => {
-                            eprintln!("Failed to connect to Redis: {}", e);
+                            error!(error = %e, "Failed to connect to Redis");
                             if let Err(reject_err) =
                                 rabbitmq_client.reject(delivery_tag, true).await
                             {
-                                eprintln!("Failed to requeue message: {}", reject_err);
+                                error!(error = %reject_err, "Failed to requeue message");
                             }
                             return;
                         }
@@ -88,19 +99,19 @@ async fn main() -> Result<(), Error> {
                     match process_message(
                         &payload,
                         &mut redis_client,
-                        &mut template_client,
-                        &mut fcm,
+                        &mut *template_client,
+                        &mut *fcm,
                     )
                     .await
                     {
                         Ok(_) => {
-                            println!("Message processed successfully");
+                            info!("Message processed successfully");
                             if let Err(ack_err) = rabbitmq_client.acknowledge(delivery_tag).await {
-                                eprintln!("Failed to acknowledge message: {}", ack_err);
+                                error!(error = %ack_err, "Failed to acknowledge message");
                             }
                         }
                         Err(e) => {
-                            eprintln!("Failed to process message: {}", e);
+                            error!(error = %e, "Failed to process message");
 
                             match serde_json::from_str::<NotificationMessage>(&payload) {
                                 Ok(original_message) => {
@@ -114,13 +125,14 @@ async fn main() -> Result<(), Error> {
                                     if let Err(dlq_err) =
                                         rabbitmq_client.publish_to_dlq(&dlq_message).await
                                     {
-                                        eprintln!("Failed to publish to DLQ: {}", dlq_err);
+                                        error!(error = %dlq_err, "Failed to publish to DLQ");
                                     }
                                 }
                                 Err(parse_err) => {
-                                    eprintln!(
-                                        "Cannot parse message as JSON: {}. Raw payload: {}",
-                                        parse_err, payload
+                                    error!(
+                                        error = %parse_err,
+                                        payload = %payload,
+                                        "Cannot parse message as JSON"
                                     );
                                 }
                             }
@@ -128,19 +140,19 @@ async fn main() -> Result<(), Error> {
                             if let Err(reject_err) =
                                 rabbitmq_client.reject(delivery_tag, false).await
                             {
-                                eprintln!("Failed to reject message: {}", reject_err);
+                                error!(error = %reject_err, "Failed to reject message");
                             }
                         }
                     }
                 });
             }
-            Err(_) => {
-                eprintln!("Error receiving message");
+            Err(e) => {
+                error!(error = ?e, "Error receiving message from queue");
             }
         }
     }
 
-    println!("Consumer closed, shutting down");
+    warn!("Consumer closed, shutting down");
 
     Ok(())
 }

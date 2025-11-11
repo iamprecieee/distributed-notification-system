@@ -1,6 +1,7 @@
 use anyhow::{Error, Result, anyhow};
 use redis::{AsyncCommands, aio::MultiplexedConnection};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tracing::{debug, info, warn};
 
 use crate::models::circuit_breaker::{CircuitBreakerConfig, CircuitState};
 
@@ -16,6 +17,8 @@ impl CircuitBreaker {
         connection: MultiplexedConnection,
         config: CircuitBreakerConfig,
     ) -> Self {
+        info!(service = %service_name, "Circuit breaker initialized");
+
         Self {
             service_name,
             connection,
@@ -33,13 +36,20 @@ impl CircuitBreaker {
         match state {
             CircuitState::Open => {
                 if self.should_attempt_reset().await? {
+                    info!(service = %self.service_name, "Circuit breaker attempting reset");
                     self.set_state(CircuitState::HalfOpen).await?;
                     return self.try_operation(operation).await;
                 }
+                warn!(service = %self.service_name, "Circuit breaker is open, rejecting request");
                 Err(anyhow!("Circuit breaker is open for {}", self.service_name))
             }
-            CircuitState::HalfOpen => self.try_operation(operation).await,
-            CircuitState::Closed => self.try_operation(operation).await,
+            CircuitState::HalfOpen => {
+                debug!(service = %self.service_name, "Circuit breaker in half-open state");
+                self.try_operation(operation).await
+            }
+            CircuitState::Closed => {
+                self.try_operation(operation).await
+            }
         }
     }
 
@@ -65,10 +75,17 @@ impl CircuitBreaker {
 
         if state == CircuitState::HalfOpen {
             let successes = self.increment_success_count().await?;
+            debug!(
+                service = %self.service_name,
+                successes,
+                threshold = self.config.success_threshold,
+                "Circuit breaker success recorded"
+            );
+
             if successes >= self.config.success_threshold {
                 self.set_state(CircuitState::Closed).await?;
                 self.reset_counters().await?;
-                println!("Circuit breaker closed for {}", self.service_name);
+                info!(service = %self.service_name, "Circuit breaker closed after successful recovery");
             }
         } else if state == CircuitState::Closed {
             self.reset_failure_count().await?;
@@ -83,18 +100,25 @@ impl CircuitBreaker {
         if state == CircuitState::HalfOpen {
             self.set_state(CircuitState::Open).await?;
             self.set_opened_at().await?;
-            println!("Circuit breaker reopened for {}", self.service_name);
+            warn!(service = %self.service_name, "Circuit breaker reopened after failed recovery attempt");
             return Ok(());
         }
 
         let failures = self.increment_failure_count().await?;
+        debug!(
+            service = %self.service_name,
+            failures,
+            threshold = self.config.failure_threshold,
+            "Circuit breaker failure recorded"
+        );
 
         if failures >= self.config.failure_threshold {
             self.set_state(CircuitState::Open).await?;
             self.set_opened_at().await?;
-            println!(
-                "Circuit breaker opened for {} after {} failures",
-                self.service_name, failures
+            warn!(
+                service = %self.service_name,
+                failures,
+                "Circuit breaker opened due to consecutive failures"
             );
         }
 

@@ -7,6 +7,7 @@ use lapin::{
     },
     types::FieldTable,
 };
+use tracing::{info, debug};
 
 use crate::{config::Config, models::message::DlqMessage};
 
@@ -18,27 +19,27 @@ pub struct RabbitMqClient {
 
 impl RabbitMqClient {
     pub async fn connect(config: &Config) -> Result<Self, Error> {
-        println!("Connecting to RabbitMQ...");
+        info!("Connecting to RabbitMQ");
 
         let connection = Connection::connect(&config.rabbitmq_url, ConnectionProperties::default())
             .await
             .map_err(|_| anyhow!("Failed to connect to RabbitMQ"))?;
 
-        println!("RabbitMQ connection established");
+        info!("RabbitMQ connection established");
 
         let channel = connection
             .create_channel()
             .await
             .map_err(|_| anyhow!("RabbitMQ channel creation failed"))?;
 
-        println!("RabbitMQ channel created");
+        info!("RabbitMQ channel created");
 
         channel
             .basic_qos(config.prefetch_count, BasicQosOptions::default())
             .await
             .map_err(|_| anyhow!("Failed to set up QoS"))?;
 
-        println!("Prefetch count set");
+        info!(prefetch_count = config.prefetch_count, "Prefetch count set");
 
         channel
             .queue_declare(
@@ -52,7 +53,7 @@ impl RabbitMqClient {
             .await
             .map_err(|_| anyhow!("Failed to declare push queue"))?;
 
-        println!("Push queue declared");
+        info!(queue = %config.push_queue_name, "Push queue declared");
 
         channel
             .queue_declare(
@@ -66,7 +67,7 @@ impl RabbitMqClient {
             .await
             .map_err(|_| anyhow!("Failed to declare failed queue"))?;
 
-        println!("Failed queue declared");
+        info!(queue = %config.failed_queue_name, "Failed queue declared");
 
         Ok(Self {
             channel,
@@ -87,7 +88,7 @@ impl RabbitMqClient {
             .await
             .map_err(|_| anyhow!("Failed to create consumer"))?;
 
-        println!("Consumer created for queue");
+        info!(queue = %self.push_queue_name, "Consumer created");
 
         Ok(consumer)
     }
@@ -98,6 +99,8 @@ impl RabbitMqClient {
             .await
             .map_err(|_| anyhow!("Failed to acknowledge message"))?;
 
+        debug!(delivery_tag, "Message acknowledged");
+
         Ok(())
     }
 
@@ -106,6 +109,8 @@ impl RabbitMqClient {
             .basic_reject(delivery_tag, BasicRejectOptions { requeue })
             .await
             .map_err(|_| anyhow!("Failed to reject message"))?;
+
+        debug!(delivery_tag, requeue, "Message rejected");
 
         Ok(())
     }
@@ -123,6 +128,12 @@ impl RabbitMqClient {
             )
             .await
             .map_err(|_| anyhow!("Failed to publish message to dlq"))?;
+
+        debug!(
+            idempotency_key = %message.original_message.idempotency_key,
+            reason = %message.failure_reason,
+            "Message published to DLQ"
+        );
 
         Ok(())
     }
