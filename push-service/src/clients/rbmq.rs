@@ -11,7 +11,7 @@ use lapin::{
 use crate::{config::Config, models::message::DlqMessage};
 
 pub struct RabbitMqClient {
-    channel: Channel,
+    pub channel: Channel,
     push_queue_name: String,
     failed_queue_name: String,
 }
