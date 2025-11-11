@@ -11,6 +11,7 @@ import {
   HttpStatus,
   ParseUUIDPipe,
   ParseIntPipe,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -29,13 +30,17 @@ import {
   PaginationMeta,
 } from '../../common/types/api-response.type';
 import { UserPreference } from '../../common/types/user-preference.enum';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('users')
 @Controller('users')
+@UseGuards(JwtAuthGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  @Post('/create')
+  @Post()
+  @Public()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new user' })
   @ApiResponse({

@@ -1,4 +1,10 @@
-import { Controller, Get, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import {
   HealthCheckService,
@@ -9,9 +15,12 @@ import {
   HealthIndicatorResult,
 } from '@nestjs/terminus';
 import { RedisService } from '../redis/redis.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('health')
 @Controller('health')
+@UseGuards(JwtAuthGuard)
 export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
@@ -20,6 +29,7 @@ export class HealthController {
   ) {}
 
   @Get()
+  @Public()
   @HttpCode(HttpStatus.OK)
   @HealthCheck()
   @ApiOperation({ summary: 'Health check endpoint' })
@@ -52,6 +62,7 @@ export class HealthController {
     }
   }
   @Get('test-redis')
+  @Public()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Test Redis connection' })
   async testRedis(): Promise<{ success: boolean; message: string }> {
