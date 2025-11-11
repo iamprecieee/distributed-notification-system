@@ -141,6 +141,7 @@ async fn test_end_to_end_complete_message_processing() -> Result<()> {
         recipient: "device_token_abc123".to_string(),
         template_code: "USER_LOGIN".to_string(),
         variables,
+        language: Some("en".to_string()),
         metadata,
     };
 
@@ -323,6 +324,7 @@ fn create_notification_message(suffix: &str) -> NotificationMessage {
         recipient: format!("device_token_{}", suffix),
         template_code: "TEST_TEMPLATE".to_string(),
         variables,
+        language: Some("en".to_string()),
         metadata: HashMap::new(),
     }
 }

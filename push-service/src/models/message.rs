@@ -13,6 +13,9 @@ pub struct NotificationMessage {
     pub variables: HashMap<String, serde_json::Value>,
 
     #[serde(default)]
+    pub language: Option<String>,
+
+    #[serde(default)]
     pub metadata: HashMap<String, serde_json::Value>,
 }
 

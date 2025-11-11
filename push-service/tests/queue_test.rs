@@ -178,6 +178,7 @@ async fn test_message_structure_preservation() -> Result<()> {
         recipient: "device_token_789".to_string(),
         template_code: "WELCOME".to_string(),
         variables: variables.clone(),
+        language: Some("en".to_string()),
         metadata: metadata.clone(),
     };
 
@@ -244,6 +245,7 @@ fn create_test_notification_message(suffix: &str) -> NotificationMessage {
         recipient: format!("token_{}", suffix),
         template_code: "TEST_TEMPLATE".to_string(),
         variables,
+        language: Some("en".to_string()),
         metadata: HashMap::new(),
     }
 }

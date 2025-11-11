@@ -35,8 +35,9 @@ pub async fn process_message(
         .mark_as_processing(&message.idempotency_key)
         .await?;
 
+    let language = message.language.as_deref().unwrap_or("en");
     let template = match template_service_client
-        .fetch_template(&message.template_code)
+        .fetch_template(&message.template_code, Some(language))
         .await
     {
         Ok(template) => template,

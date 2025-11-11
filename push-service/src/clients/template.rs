@@ -7,7 +7,7 @@ use crate::{
     config::Config,
     models::{
         retry::RetryConfig,
-        template::{RenderedTemplate, Template},
+        template::{Template, TemplateContent},
     },
     utils::retry_with_backoff,
 };
@@ -32,8 +32,16 @@ impl TemplateServiceClient {
         })
     }
 
-    pub async fn fetch_template(&self, template_code: &str) -> Result<Template, Error> {
-        let url = format!("{}/{}", self.base_url, template_code);
+    pub async fn fetch_template(
+        &self,
+        template_code: &str,
+        language: Option<&str>,
+    ) -> Result<Template, Error> {
+        let language = language.unwrap_or("en");
+        let url = format!(
+            "{}/api/v1/templates/{}?lang={}",
+            self.base_url, template_code, language
+        );
 
         retry_with_backoff(&self.retry_config, || {
             let url_clone = url.clone();
@@ -67,11 +75,11 @@ impl TemplateServiceClient {
         &self,
         template: &Template,
         variables: &HashMap<String, serde_json::Value>,
-    ) -> Result<RenderedTemplate, Error> {
-        let title = Self::replace_variables(&template.body_text, variables)?;
-        let body = Self::replace_variables(&template.body_text, variables)?;
+    ) -> Result<TemplateContent, Error> {
+        let title = Self::replace_variables(&template.content.title, variables)?;
+        let body = Self::replace_variables(&template.content.body, variables)?;
 
-        Ok(RenderedTemplate { title, body })
+        Ok(TemplateContent { title, body })
     }
 
     fn replace_variables(

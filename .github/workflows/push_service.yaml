@@ -124,7 +124,13 @@ jobs:
           PREFETCH_COUNT=10
           REDIS_URL=redis://localhost:6379/0
           IDEMPOTENCY_TTL_SECONDS=3600
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
           TEMPLATE_SERVICE_URL=http://localhost:8001
+          FCM_SERVER_KEY=test_fcm_key
+          FCM_URL=https://fcm.googleapis.com/fcm/send
+          CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+          CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
+          CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
           MAX_RETRY_ATTEMPTS=5
           INITIAL_RETRY_DELAY_MS=100
           MAX_RETRY_DELAY_MS=5000
@@ -215,7 +221,13 @@ jobs:
           PREFETCH_COUNT=10
           REDIS_URL=redis://localhost:6379/0
           IDEMPOTENCY_TTL_SECONDS=3600
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
           TEMPLATE_SERVICE_URL=http://localhost:8001
+          FCM_SERVER_KEY=test_fcm_key
+          FCM_URL=https://fcm.googleapis.com/fcm/send
+          CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+          CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
+          CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
           MAX_RETRY_ATTEMPTS=5
           INITIAL_RETRY_DELAY_MS=100
           MAX_RETRY_DELAY_MS=5000
