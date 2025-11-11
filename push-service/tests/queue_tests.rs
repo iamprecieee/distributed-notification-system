@@ -331,6 +331,17 @@ async fn purge_queue(config: &Config) -> Result<()> {
     let channel = connection.create_channel().await?;
 
     channel
+        .queue_declare(
+            &config.push_queue_name,
+            QueueDeclareOptions {
+                durable: true,
+                ..Default::default()
+            },
+            FieldTable::default(),
+        )
+        .await?;
+
+    channel
         .queue_purge(&config.push_queue_name, QueuePurgeOptions::default())
         .await?;
 
@@ -344,6 +355,17 @@ async fn purge_dlq(config: &Config) -> Result<()> {
         Connection::connect(&config.rabbitmq_url, ConnectionProperties::default()).await?;
 
     let channel = connection.create_channel().await?;
+
+    channel
+        .queue_declare(
+            &config.push_queue_name,
+            QueueDeclareOptions {
+                durable: true,
+                ..Default::default()
+            },
+            FieldTable::default(),
+        )
+        .await?;
 
     channel
         .queue_purge(&config.failed_queue_name, QueuePurgeOptions::default())
