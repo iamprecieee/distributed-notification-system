@@ -41,11 +41,7 @@ impl FcmClient {
         trace_id: &str,
         data: Option<HashMap<String, String>>,
     ) -> Result<(), Error> {
-        debug!(
-            device_token,
-            trace_id,
-            "Sending FCM push notification"
-        );
+        debug!(device_token, trace_id, "Sending FCM push notification");
 
         let mut payload_data = data.unwrap_or_default();
         payload_data.insert("trace_id".to_string(), trace_id.to_string());
@@ -66,7 +62,14 @@ impl FcmClient {
         let retry_config = self.retry_config.clone();
 
         self.circuit_breaker
-            .call(|| Self::send_with_retry_static(http_client.clone(), fcm_project_id.clone(), retry_config.clone(), request.clone()))
+            .call(|| {
+                Self::send_with_retry_static(
+                    http_client.clone(),
+                    fcm_project_id.clone(),
+                    retry_config.clone(),
+                    request.clone(),
+                )
+            })
             .await
     }
 
@@ -77,7 +80,11 @@ impl FcmClient {
         request: FcmRequest,
     ) -> Result<(), Error> {
         retry_with_backoff(&retry_config, || {
-            Self::send_notification_once_static(http_client.clone(), fcm_project_id.clone(), &request)
+            Self::send_notification_once_static(
+                http_client.clone(),
+                fcm_project_id.clone(),
+                &request,
+            )
         })
         .await
     }

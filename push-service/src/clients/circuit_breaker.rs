@@ -47,9 +47,7 @@ impl CircuitBreaker {
                 debug!(service = %self.service_name, "Circuit breaker in half-open state");
                 self.try_operation(operation).await
             }
-            CircuitState::Closed => {
-                self.try_operation(operation).await
-            }
+            CircuitState::Closed => self.try_operation(operation).await,
         }
     }
 

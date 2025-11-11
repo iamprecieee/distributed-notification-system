@@ -49,17 +49,19 @@ impl TemplateServiceClient {
             self.base_url, template_code, language
         );
 
-        debug!(
-            template_code,
-            language,
-            "Fetching template from service"
-        );
+        debug!(template_code, language, "Fetching template from service");
 
         let http_client = self.http_client.clone();
         let retry_config = self.retry_config.clone();
 
         self.circuit_breaker
-            .call(|| Self::fetch_with_retry_static(http_client.clone(), retry_config.clone(), url.clone()))
+            .call(|| {
+                Self::fetch_with_retry_static(
+                    http_client.clone(),
+                    retry_config.clone(),
+                    url.clone(),
+                )
+            })
             .await
     }
 

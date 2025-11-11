@@ -7,7 +7,7 @@ use lapin::{
     },
     types::FieldTable,
 };
-use tracing::{info, debug};
+use tracing::{debug, info};
 
 use crate::{config::Config, models::message::DlqMessage};
 

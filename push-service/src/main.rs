@@ -4,8 +4,8 @@ use anyhow::{Error, Result, anyhow};
 use chrono::{SecondsFormat, Utc};
 use push_service::{
     clients::{
-        circuit_breaker::CircuitBreaker, fcm::FcmClient, rbmq::RabbitMqClient,
-        redis::RedisClient, template::TemplateServiceClient,
+        circuit_breaker::CircuitBreaker, fcm::FcmClient, rbmq::RabbitMqClient, redis::RedisClient,
+        template::TemplateServiceClient,
     },
     config::Config,
     models::message::{DlqMessage, NotificationMessage},
@@ -56,7 +56,9 @@ async fn main() -> Result<(), Error> {
         TemplateServiceClient::new(&config, template_circuit_breaker).await?,
     ));
 
-    let fcm_client = Arc::new(Mutex::new(FcmClient::new(&config, fcm_circuit_breaker).await));
+    let fcm_client = Arc::new(Mutex::new(
+        FcmClient::new(&config, fcm_circuit_breaker).await,
+    ));
 
     let semaphore = Arc::new(Semaphore::new(config.worker_concurrency));
 
