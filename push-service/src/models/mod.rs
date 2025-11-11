@@ -1,6 +1,7 @@
 pub mod audit;
 pub mod circuit_breaker;
 pub mod fcm;
+pub mod health;
 pub mod message;
 pub mod retry;
 pub mod status;

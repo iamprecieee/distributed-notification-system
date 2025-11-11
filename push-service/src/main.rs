@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::{Error, Result};
 use chrono::{SecondsFormat, Utc};
 use push_service::{
+    api::run_api_server,
     clients::{
         circuit_breaker::CircuitBreaker, database::DatabaseClient, fcm::FcmClient,
         rbmq::RabbitMqClient, redis::RedisClient, template::TemplateServiceClient,
@@ -29,6 +30,13 @@ async fn main() -> Result<(), Error> {
 
     info!("Push service starting");
     info!("Configuration validated");
+
+    let health_config = config.clone();
+    tokio::spawn(async move {
+        if let Err(e) = run_api_server(health_config).await {
+            error!(error = %e, "Health check server failed");
+        }
+    });
 
     let rabbitmq_client = Arc::new(RabbitMqClient::connect(&config).await?);
     let mut consumer = rabbitmq_client.create_consumer().await?;

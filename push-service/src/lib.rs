@@ -1,3 +1,4 @@
+pub mod api;
 pub mod clients;
 pub mod config;
 pub mod models;
