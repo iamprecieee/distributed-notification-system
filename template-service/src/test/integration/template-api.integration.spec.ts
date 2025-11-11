@@ -1,42 +1,37 @@
-/**
- * Integration Test - Template API
- * Tests template service with real database, Redis, and RabbitMQ connections
- */
-
-describe('Template API Integration', () => {
-  describe('Health Check', () => {
-    it('should pass placeholder test', () => {
+describe("Template API Integration", () => {
+  describe("Health Check", () => {
+    it("should pass placeholder test", () => {
       expect(true).toBe(true);
     });
 
-    it('should validate health check response structure', () => {
+    it("should validate health check response structure", () => {
       const mockHealthResponse = {
-        status: 'healthy',
-        service: 'template-service',
+        status: "healthy",
+        service: "template-service",
         timestamp: new Date().toISOString(),
         uptime: 100,
       };
 
-      expect(mockHealthResponse).toHaveProperty('status');
-      expect(mockHealthResponse).toHaveProperty('service');
-      expect(mockHealthResponse.service).toBe('template-service');
+      expect(mockHealthResponse).toHaveProperty("status");
+      expect(mockHealthResponse).toHaveProperty("service");
+      expect(mockHealthResponse.service).toBe("template-service");
     });
   });
 
-  describe('Template CRUD', () => {
-    it('should validate template structure', () => {
+  describe("Template CRUD", () => {
+    it("should validate template structure", () => {
       const mockTemplate = {
-        code: 'test_template',
-        type: 'push',
-        language: 'en',
+        code: "test_template",
+        type: "push",
+        language: "en",
         version: 1,
-        content: { title: 'Test {{name}}' },
-        variables: ['name'],
+        content: { title: "Test {{name}}" },
+        variables: ["name"],
       };
 
-      expect(mockTemplate).toHaveProperty('code');
-      expect(mockTemplate).toHaveProperty('version');
-      expect(mockTemplate.variables).toContain('name');
+      expect(mockTemplate).toHaveProperty("code");
+      expect(mockTemplate).toHaveProperty("version");
+      expect(mockTemplate.variables).toContain("name");
     });
   });
 });
