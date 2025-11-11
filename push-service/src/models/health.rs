@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -13,7 +12,7 @@ pub enum HealthStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthCheckResponse {
     pub status: HealthStatus,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: String,
     pub checks: HashMap<String, ServiceHealth>,
 }
 

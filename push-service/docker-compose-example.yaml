@@ -1,0 +1,158 @@
+services:
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: push-service-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - push-service-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: push-service-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - push-service-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: push-service-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: notifications_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - push-service-network
+
+  template-service:
+    image: python:3.11-slim
+    container_name: push-service-template-mock
+    working_dir: /app
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./mock-services:/app
+    command: >
+      bash -c "apt-get update && apt-get install -y curl && pip install flask flask-cors && python template_service.py"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/api/v1/templates/TEST_TEMPLATE"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - push-service-network
+
+  mock-fcm-service:
+    image: python:3.11-slim
+    container_name: fcm-service-template-mock
+    working_dir: /app
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./mock-services:/app
+    command: >
+      bash -c "apt-get update && apt-get install -y curl && python3 -m http.server 8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - push-service-network
+
+  push-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: push-service-app
+    ports:
+      - "8080:8080"
+    environment:
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/%2f
+      PUSH_QUEUE_NAME: push_notifications
+      FAILED_QUEUE_NAME: failed_notifications
+      PREFETCH_COUNT: 10
+
+      REDIS_URL: redis://redis:6379/0
+      IDEMPOTENCY_TTL_SECONDS: 3600
+
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/notifications_db
+
+      TEMPLATE_SERVICE_URL: http://template-service:8001
+
+      FCM_PROJECT_ID: ${FCM_PROJECT_ID:-your-project-id}
+      GOOGLE_APPLICATION_CREDENTIALS: /app/service-account.json
+
+      CIRCUIT_BREAKER_FAILURE_THRESHOLD: 5
+      CIRCUIT_BREAKER_TIMEOUT_SECONDS: 60
+      CIRCUIT_BREAKER_SUCCESS_THRESHOLD: 3
+
+      MAX_RETRY_ATTEMPTS: 5
+      INITIAL_RETRY_DELAY_MS: 100
+      MAX_RETRY_DELAY_MS: 5000
+      RETRY_BACKOFF_MULTIPLIER: 2
+
+      WORKER_CONCURRENCY: 4
+
+      SERVER_PORT: 8080
+    volumes:
+      - ./service-account.json:/app/service-account.json:ro
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      template-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - push-service-network
+
+volumes:
+  rabbitmq_data:
+  redis_data:
+  postgres_data:
+
+networks:
+  push-service-network:
+    driver: bridge

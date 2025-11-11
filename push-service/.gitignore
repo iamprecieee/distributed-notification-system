@@ -6,3 +6,5 @@ coverage
 .ruff_cache/
 .venv/
 *service-account.json
+docker-compose.yaml
+.sqlx

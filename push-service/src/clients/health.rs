@@ -45,7 +45,7 @@ impl HealthChecker {
 
         HealthCheckResponse {
             status: overall_status,
-            timestamp: Utc::now(),
+            timestamp: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             checks,
         }
     }
