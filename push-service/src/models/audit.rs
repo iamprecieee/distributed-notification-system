@@ -18,7 +18,7 @@ pub struct AuditLog {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct CreateAuditLog {
     pub trace_id: String,
     pub user_id: String,

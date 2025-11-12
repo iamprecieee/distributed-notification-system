@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: user-service-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: user_service_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: user-service-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  user-service:
+    build:
+      context: ./user-service
+      dockerfile: Dockerfile
+    
+    container_name: user_service_app
+    
+    ports:
+      - "3000:3000"
+      
+    environment:
+      # App
+      NODE_ENV: production
+      PORT: 3000
+      API_PREFIX: api/v1
+
+      # Database
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USERNAME: postgres
+      DATABASE_PASSWORD: admin
+      DATABASE_NAME: user_service_db
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: 
+      REDIS_TTL: 3600
+
+      # JWT
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: 24h
+
+      # Service
+      SERVICE_NAME: user-service
+
+      # Logging
+      LOG_LEVEL: info
+      
+    depends_on:
+      - postgres
+      - redis
+volumes:
+  postgres_data:
+  redis_data:

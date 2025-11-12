@@ -11,9 +11,22 @@ use push_service::{
 use std::collections::HashMap;
 use uuid::Uuid;
 
+fn setup() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+
+    INIT.call_once(|| {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .expect("Failed to install rustls crypto provider");
+    });
+}
+
 /// Test: Complete notification flow from queue to success
 #[tokio::test]
 async fn test_end_to_end_notification_success_flow() -> Result<()> {
+    setup();
+
     let config = Config::load()?;
     RabbitMqClient::connect(&config).await?;
     let mut redis_client = RedisClient::connect(&config).await?;
@@ -81,6 +94,8 @@ async fn test_end_to_end_notification_success_flow() -> Result<()> {
 /// Test: Duplicate messages are rejected throughout the flow
 #[tokio::test]
 async fn test_end_to_end_duplicate_rejection() -> Result<()> {
+    setup();
+
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
     let database_client = DatabaseClient::connect(&config.database_url).await?;
@@ -229,19 +244,25 @@ async fn test_end_to_end_complete_message_processing() -> Result<()> {
     variables.insert("action".to_string(), serde_json::json!("login"));
 
     let mut metadata = HashMap::new();
+    metadata.insert(
+        "push_token".to_string(),
+        serde_json::json!("device_token_abc123"),
+    );
     metadata.insert("source".to_string(), serde_json::json!("web"));
     metadata.insert("ip_address".to_string(), serde_json::json!("192.168.1.1"));
 
     let message = NotificationMessage {
-        trace_id: "trace_complete_001".to_string(),
+        notification_id: "notif_complete_001".to_string(),
         idempotency_key: format!("complete_{}", Uuid::new_v4()),
-        user_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
         notification_type: "push".to_string(),
-        recipient: "device_token_abc123".to_string(),
+        user_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
         template_code: "USER_LOGIN".to_string(),
         variables,
-        language: Some("en".to_string()),
+        request_id: "req_complete_001".to_string(),
+        priority: 1,
         metadata,
+        created_by: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
     };
 
     let payload = serde_json::to_string(&message)?;
@@ -272,6 +293,8 @@ async fn test_end_to_end_complete_message_processing() -> Result<()> {
 /// Test: Message flow handles queue unavailability gracefully
 #[tokio::test]
 async fn test_end_to_end_graceful_degradation() -> Result<()> {
+    setup();
+
     let config = Config::load()?;
     let mut redis_client = RedisClient::connect(&config).await?;
     let database_client = DatabaseClient::connect(&config.database_url).await?;
@@ -323,6 +346,8 @@ async fn test_end_to_end_graceful_degradation() -> Result<()> {
 /// Test: High throughput message processing
 #[tokio::test]
 async fn test_end_to_end_high_throughput() -> Result<()> {
+    setup();
+
     let config = Config::load()?;
 
     let message_count = 50;
@@ -440,6 +465,8 @@ async fn test_end_to_end_message_ordering() -> Result<()> {
 /// Test: System recovers from transient Redis failures
 #[tokio::test]
 async fn test_end_to_end_redis_resilience() -> Result<()> {
+    setup();
+
     let config = Config::load()?;
     let database_client = DatabaseClient::connect(&config.database_url).await?;
 
@@ -502,16 +529,24 @@ fn create_notification_message(suffix: &str) -> NotificationMessage {
     let mut variables = HashMap::new();
     variables.insert("test_key".to_string(), serde_json::json!("test_value"));
 
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "push_token".to_string(),
+        serde_json::json!(format!("device_token_{}", suffix)),
+    );
+
     NotificationMessage {
-        trace_id: format!("trace_{}", suffix),
+        notification_id: format!("notif_{}", suffix),
         idempotency_key: format!("idem_{}_{}", suffix, Uuid::new_v4()),
-        user_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
         notification_type: "push".to_string(),
-        recipient: format!("device_token_{}", suffix),
+        user_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
         template_code: "TEST_TEMPLATE".to_string(),
         variables,
-        language: Some("en".to_string()),
-        metadata: HashMap::new(),
+        request_id: format!("req_{}", suffix),
+        priority: 1,
+        metadata,
+        created_by: "550e8400-e29b-41d4-a716-446655440000".to_string(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
     }
 }
 

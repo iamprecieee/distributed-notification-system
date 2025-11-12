@@ -173,18 +173,24 @@ async fn test_message_structure_preservation() -> Result<()> {
     variables.insert("amount".to_string(), serde_json::json!(100.50));
 
     let mut metadata = HashMap::new();
+    metadata.insert(
+        "push_token".to_string(),
+        serde_json::json!("device_token_789"),
+    );
     metadata.insert("priority".to_string(), serde_json::json!("high"));
 
     let original = NotificationMessage {
-        trace_id: "trace_123".to_string(),
+        notification_id: "notif_123".to_string(),
         idempotency_key: format!("test_structure_{}", uuid::Uuid::new_v4()),
-        user_id: "user_456".to_string(),
         notification_type: "push".to_string(),
-        recipient: "device_token_789".to_string(),
+        user_id: "user_456".to_string(),
         template_code: "WELCOME".to_string(),
         variables: variables.clone(),
-        language: Some("en".to_string()),
+        request_id: "req_123".to_string(),
+        priority: 1,
         metadata: metadata.clone(),
+        created_by: "user_456".to_string(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
     };
 
     publish_test_message(&config, &original).await?;
@@ -194,7 +200,7 @@ async fn test_message_structure_preservation() -> Result<()> {
     if let Some(Ok(delivery)) = consumer.next().await {
         let received: NotificationMessage = serde_json::from_slice(&delivery.data)?;
 
-        assert_eq!(received.trace_id, original.trace_id);
+        assert_eq!(received.request_id, original.request_id);
         assert_eq!(received.user_id, original.user_id);
         assert_eq!(received.template_code, original.template_code);
         assert_eq!(
@@ -236,7 +242,7 @@ async fn test_dlq_messages_contain_failure_context() -> Result<()> {
 
     assert_eq!(retrieved.failure_reason, "FCM connection timeout");
     assert!(!retrieved.failed_at.is_empty());
-    assert_eq!(retrieved.original_message.trace_id, original.trace_id);
+    assert_eq!(retrieved.original_message.request_id, original.request_id);
 
     Ok(())
 }
@@ -245,16 +251,24 @@ fn create_test_notification_message(suffix: &str) -> NotificationMessage {
     let mut variables = HashMap::new();
     variables.insert("key".to_string(), serde_json::json!("value"));
 
+    let mut metadata = HashMap::new();
+    metadata.insert(
+        "push_token".to_string(),
+        serde_json::json!(format!("token_{}", suffix)),
+    );
+
     NotificationMessage {
-        trace_id: format!("trace_{}", suffix),
+        notification_id: format!("notif_{}", suffix),
         idempotency_key: format!("idem_{}_{}", suffix, uuid::Uuid::new_v4()),
-        user_id: format!("user_{}", suffix),
         notification_type: "push".to_string(),
-        recipient: format!("token_{}", suffix),
+        user_id: format!("user_{}", suffix),
         template_code: "TEST_TEMPLATE".to_string(),
         variables,
-        language: Some("en".to_string()),
-        metadata: HashMap::new(),
+        request_id: format!("req_{}", suffix),
+        priority: 1,
+        metadata,
+        created_by: format!("user_{}", suffix),
+        timestamp: chrono::Utc::now().to_rfc3339(),
     }
 }
 
