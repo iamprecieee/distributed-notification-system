@@ -10,7 +10,7 @@ export interface ServiceConfig {
 export const SERVICE_REGISTRY: ServiceConfig[] = [
   {
     name: 'user-service',
-    url: process.env.USER_SERVICE_URL || 'http://localhost:8083',
+    url: process.env.USER_SERVICE_URL || 'http://localhost:3001',
     prefix: '',
     timeout: 5000,
     requiresAuth: false,

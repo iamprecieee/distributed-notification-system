@@ -37,15 +37,9 @@ export class AuthService {
 
       const response = await firstValueFrom(
         this.httpService
-          .post(
-            `${this.userServiceUrl}/api/users/auth/validate`,
-            {},
-            {
-              headers: {
-                Authorization: `Bearer ${token}`,
-              },
-            }
-          )
+          .post(`${this.userServiceUrl}/api/v1/auth/validate`, {
+            token: token,
+          })
           .pipe(
             timeout(5000),
             catchError((error) => {
@@ -55,10 +49,13 @@ export class AuthService {
           )
       );
 
-      if (!response.data.success || !response.data.data) {
+      if (!response.data.success || !response.data.data.valid) {
         throw new UnauthorizedException('Token validation failed');
       }
 
+      this.logger.log(
+        `Token validated from request with data ${JSON.stringify(response.data)}`
+      );
       return response.data.data;
     } catch (error) {
       this.logger.error('Authentication error:', error.message);
