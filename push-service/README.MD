@@ -104,18 +104,21 @@ Send notification messages to the `push_notifications` queue:
 
 ```json
 {
-  "trace_id": "a3f5b9c1-2d4e-4a5f-9b2c-7e8d9f1a2b3c",
-  "idempotency_key": "notif_8f3d9a1c2b4e5f6a7b8c9d0e1f2a3b4c",
-  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "notification_id": "550e8400-e29b-41d4-a716-446655440000",
+  "idempotency_key": "test_new_format_001",
   "notification_type": "push",
-  "recipient": "fcm_device_token_xyz123",
-  "template_code": "welcome_notification",
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "template_code": "TEST_TEMPLATE",
   "variables": {
-    "name": "John Doe",
-    "link": "https://example.com/welcome"
+    "test_key": "Hello with new format"
   },
-  "language": "en",
-  "metadata": {}
+  "request_id": "req_test_new_format_001",
+  "priority": 1,
+  "metadata": {
+    "push_token": "test_device_token_xyz"
+  },
+  "created_by": "550e8400-e29b-41d4-a716-446655440000",
+  "timestamp": "2025-11-12T11:48:36.767Z"
 }
 ```
 
@@ -131,30 +134,35 @@ GET http://localhost:8080/health
 
 ```json
 {
-  "status": "healthy",
-  "timestamp": "2025-11-11T10:30:00Z",
-  "checks": {
-    "database": {
-      "status": "healthy",
-      "response_time_ms": 5
-    },
-    "cache_service": {
-      "status": "healthy",
-      "response_time_ms": 2
-    },
-    "message_broker": {
-      "status": "healthy",
-      "response_time_ms": 3
-    },
-    "fcm": {
-      "status": "healthy",
-      "circuit_breaker": "closed"
-    },
-    "template_service": {
-      "status": "healthy",
-      "circuit_breaker": "closed"
+  "success": true,
+  "data": {
+    "status": "degraded",
+    "timestamp": "2025-11-12T13:01:34.029Z",
+    "checks": {
+      "database": {
+        "status": "healthy",
+        "response_time_ms": 98
+      },
+      "message_broker": {
+        "status": "healthy",
+        "response_time_ms": 59
+      },
+      "fcm": {
+        "status": "degraded",
+        "circuit_breaker": "open"
+      },
+      "cache_service": {
+        "status": "healthy",
+        "response_time_ms": 10
+      },
+      "template_service": {
+        "status": "healthy",
+        "response_time_ms": 0,
+        "circuit_breaker": "closed"
+      }
     }
-  }
+  },
+  "message": "Service degraded but operational"
 }
 ```
 

@@ -13,6 +13,7 @@ use crate::{
         message::NotificationMessage,
         retry::RetryConfig,
         status::{IdempotencyStatus, NotificationStatus},
+        validation::validate_fcm_token,
     },
 };
 
@@ -26,7 +27,7 @@ pub async fn process_message(
     let message = serde_json::from_str::<NotificationMessage>(payload)?;
 
     info!(
-        trace_id = %message.trace_id,
+        request_id = %message.request_id,
         idempotency_key = %message.idempotency_key,
         user_id = %message.user_id,
         "Processing notification message"
@@ -57,7 +58,37 @@ pub async fn process_message(
         .mark_as_processing(&message.idempotency_key)
         .await?;
 
-    let language = message.language.as_deref().unwrap_or("en");
+    let device_token = message
+        .metadata
+        .get("push_token")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("Missing push_token in metadata"))?;
+
+    if let Err(e) = validate_fcm_token(device_token) {
+        redis_client
+            .mark_as_failed(&message.idempotency_key)
+            .await?;
+
+        let audit_log = CreateAuditLog::new(
+            message.request_id.clone(),
+            message.user_id.clone(),
+            message.notification_type.clone(),
+            message.template_code.clone(),
+            NotificationStatus::Failed,
+        )
+        .with_error(format!("Invalid device token: {}", e))
+        .with_metadata(serde_json::to_value(message.metadata.clone())?);
+
+        if let Err(log_err) = database_client.log_notification(audit_log).await {
+            warn!(error = %log_err, "Failed to write audit log");
+        }
+
+        return Err(anyhow!("Invalid device token: {}", e));
+    }
+
+    // Use English as default language for now
+    let language = "en";
+
     let template = match template_service_client
         .fetch_template(&message.template_code, Some(language))
         .await
@@ -69,7 +100,7 @@ pub async fn process_message(
                 .await?;
 
             let audit_log = CreateAuditLog::new(
-                message.trace_id.clone(),
+                message.request_id.clone(),
                 message.user_id.clone(),
                 message.notification_type.clone(),
                 message.template_code.clone(),
@@ -97,7 +128,7 @@ pub async fn process_message(
                 .await?;
 
             let audit_log = CreateAuditLog::new(
-                message.trace_id.clone(),
+                message.request_id.clone(),
                 message.user_id.clone(),
                 message.notification_type.clone(),
                 message.template_code.clone(),
@@ -116,10 +147,10 @@ pub async fn process_message(
 
     match fcm_client
         .send_notification(
-            &message.recipient,
+            device_token,
             &rendered.title,
             &rendered.body,
-            &message.trace_id,
+            &message.request_id,
             None,
         )
         .await
@@ -128,7 +159,7 @@ pub async fn process_message(
             redis_client.mark_as_sent(&message.idempotency_key).await?;
 
             let audit_log = CreateAuditLog::new(
-                message.trace_id.clone(),
+                message.request_id.clone(),
                 message.user_id.clone(),
                 message.notification_type.clone(),
                 message.template_code.clone(),
@@ -141,7 +172,7 @@ pub async fn process_message(
             }
 
             info!(
-                trace_id = %message.trace_id,
+                request_id = %message.request_id,
                 idempotency_key = %message.idempotency_key,
                 "Notification sent successfully"
             );
@@ -153,7 +184,7 @@ pub async fn process_message(
                 .await?;
 
             let audit_log = CreateAuditLog::new(
-                message.trace_id.clone(),
+                message.request_id.clone(),
                 message.user_id.clone(),
                 message.notification_type.clone(),
                 message.template_code.clone(),

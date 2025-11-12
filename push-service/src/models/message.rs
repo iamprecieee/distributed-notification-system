@@ -4,19 +4,17 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationMessage {
-    pub trace_id: String,
+    pub notification_id: String,
     pub idempotency_key: String,
-    pub user_id: String,
     pub notification_type: String,
-    pub recipient: String,
+    pub user_id: String,
     pub template_code: String,
     pub variables: HashMap<String, serde_json::Value>,
-
-    #[serde(default)]
-    pub language: Option<String>,
-
-    #[serde(default)]
+    pub request_id: String,
+    pub priority: i32,
     pub metadata: HashMap<String, serde_json::Value>,
+    pub created_by: String,
+    pub timestamp: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
