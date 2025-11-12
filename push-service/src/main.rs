@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
+use anyhow::{Error, Result, anyhow};
 use chrono::{SecondsFormat, Utc};
 use push_service::{
     api::run_api_server,
@@ -19,6 +19,10 @@ use tracing::{error, info, warn};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .map_err(|_| anyhow!("Failed to install rustls crypto provider"))?;
+
     tracing_subscriber::fmt()
         .with_target(false)
         .with_thread_ids(true)
@@ -31,17 +35,18 @@ async fn main() -> Result<(), Error> {
     info!("Push service starting");
     info!("Configuration validated");
 
+    let database_client = Arc::new(DatabaseClient::connect(&config.database_url).await?);
+
     let health_config = config.clone();
+    let database_for_api = Arc::clone(&database_client);
     tokio::spawn(async move {
-        if let Err(e) = run_api_server(health_config).await {
+        if let Err(e) = run_api_server(health_config, database_for_api).await {
             error!(error = %e, "Health check server failed");
         }
     });
 
     let rabbitmq_client = Arc::new(RabbitMqClient::connect(&config).await?);
     let mut consumer = rabbitmq_client.create_consumer().await?;
-
-    let database_client = Arc::new(DatabaseClient::connect(&config.database_url).await?);
 
     let redis_client = redis::Client::open(config.redis_url.as_str())?;
     let redis_conn = redis_client.get_multiplexed_async_connection().await?;

@@ -24,14 +24,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    
     container_name: user_service_app
-    
     ports:
-      - "3000:3000"
-      
+      - "3000:3000"  
+
     environment:
-      # App
       NODE_ENV: ${NODE_ENV}
       PORT: ${PORT}
       API_PREFIX: ${API_PREFIX}
@@ -46,7 +43,7 @@ services:
       # Redis
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: 6379
-      REDIS_PASSWORD: 
+      REDIS_PASSWORD:
       REDIS_TTL: ${REDIS_TTL}
 
       # JWT
@@ -58,7 +55,7 @@ services:
 
       # Logging
       LOG_LEVEL: info
-      
+     
     depends_on:
       - postgres
       - redis
