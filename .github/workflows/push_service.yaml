@@ -1,0 +1,296 @@
+name: Push Service CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "push-service/**"
+      - ".github/workflows/push_service.yaml"
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - "push-service/**"
+      - ".github/workflows/push_service.yaml"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  code-quality:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./push-service
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check code formatting
+        run: cargo fmt -- --check
+
+      - name: Run Clippy linter
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Check for security vulnerabilities
+        run: |
+          cargo install cargo-audit
+          cargo audit
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: code-quality
+    defaults:
+      run:
+        working-directory: ./push-service
+
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13-management-alpine
+        ports:
+          - 5672:5672
+          - 15672:15672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: notifications_db
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-integration-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for RabbitMQ..."
+          timeout 60 bash -c 'until nc -z localhost 5672; do sleep 1; done'
+          echo "Waiting for Redis..."
+          timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
+          echo "Waiting for PostgreSQL..."
+          timeout 60 bash -c 'until nc -z localhost 5432; do sleep 1; done'
+
+      - name: Setup PostgreSQL schema
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d notifications_db << 'EOF'
+          CREATE TABLE IF NOT EXISTS audit_logs (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              trace_id VARCHAR(100) NOT NULL,
+              user_id UUID NOT NULL,
+              notification_type VARCHAR(50) NOT NULL,
+              template_code VARCHAR(100) NOT NULL,
+              status VARCHAR(50) NOT NULL CHECK (status IN ('queued', 'processing', 'sent', 'failed', 'dlq')),
+              error_message TEXT,
+              metadata JSONB,
+              created_at TIMESTAMP NOT NULL DEFAULT NOW()
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_trace_id ON audit_logs(trace_id);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_status ON audit_logs(status);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+          EOF
+
+      - name: Create test environment file
+        run: |
+          cat > .env << EOF
+          RABBITMQ_URL=amqp://guest:guest@localhost:5672/%2f
+          PUSH_QUEUE_NAME=push_notifications
+          FAILED_QUEUE_NAME=failed_notifications
+          PREFETCH_COUNT=10
+          REDIS_URL=redis://localhost:6379/0
+          IDEMPOTENCY_TTL_SECONDS=3600
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
+          TEMPLATE_SERVICE_URL=http://localhost:8001
+          FCM_PROJECT_ID=test_project_id
+          GOOGLE_APPLICATION_CREDENTIALS=./test_service_account.json
+          CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+          CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
+          CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
+          MAX_RETRY_ATTEMPTS=5
+          INITIAL_RETRY_DELAY_MS=100
+          MAX_RETRY_DELAY_MS=5000
+          RETRY_BACKOFF_MULTIPLIER=2
+          WORKER_CONCURRENCY=4
+          SERVER_PORT=8080
+          EOF
+
+      - name: Run idempotency integration tests
+        run: cargo test --test idempotency_tests -- --test-threads=1
+
+      - name: Run queue integration tests
+        run: cargo test --test queue_tests -- --test-threads=1
+
+      - name: Run retry integration tests
+        run: cargo test --test retry_tests -- --test-threads=1
+
+  e2e-tests:
+    name: End-to-End Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    defaults:
+      run:
+        working-directory: ./push-service
+
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13-management-alpine
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        env:
+          RABBITMQ_DEFAULT_USER: guest
+          RABBITMQ_DEFAULT_PASS: guest
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: notifications_db
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-e2e-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Setup PostgreSQL schema
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d notifications_db << 'EOF'
+          CREATE TABLE IF NOT EXISTS audit_logs (
+              id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+              trace_id VARCHAR(100) NOT NULL,
+              user_id UUID NOT NULL,
+              notification_type VARCHAR(50) NOT NULL,
+              template_code VARCHAR(100) NOT NULL,
+              status VARCHAR(50) NOT NULL CHECK (status IN ('queued', 'processing', 'sent', 'failed', 'dlq')),
+              error_message TEXT,
+              metadata JSONB,
+              created_at TIMESTAMP NOT NULL DEFAULT NOW()
+          );
+
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_trace_id ON audit_logs(trace_id);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_status ON audit_logs(status);
+          CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+          EOF
+
+      - name: Create test environment file
+        run: |
+          cat > .env << EOF
+          RABBITMQ_URL=amqp://guest:guest@localhost:5672/%2f
+          PUSH_QUEUE_NAME=push_notifications
+          FAILED_QUEUE_NAME=failed_notifications
+          PREFETCH_COUNT=10
+          REDIS_URL=redis://localhost:6379/0
+          IDEMPOTENCY_TTL_SECONDS=3600
+          DATABASE_URL=postgres://postgres:postgres@localhost:5432/notifications_db
+          TEMPLATE_SERVICE_URL=http://localhost:8001
+          FCM_PROJECT_ID=test_project_id
+          GOOGLE_APPLICATION_CREDENTIALS=./test_service_account.json
+          CIRCUIT_BREAKER_FAILURE_THRESHOLD=5
+          CIRCUIT_BREAKER_TIMEOUT_SECONDS=60
+          CIRCUIT_BREAKER_SUCCESS_THRESHOLD=3
+          MAX_RETRY_ATTEMPTS=5
+          INITIAL_RETRY_DELAY_MS=100
+          MAX_RETRY_DELAY_MS=5000
+          RETRY_BACKOFF_MULTIPLIER=2
+          WORKER_CONCURRENCY=4
+          SERVER_PORT=8080
+          EOF
+
+      - name: Run end-to-end workflow tests
+        run: cargo test --test e2e_tests -- --test-threads=1

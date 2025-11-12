@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>FCM Token Test</title>
+  </head>
+  <body>
+    <h1>Firebase Cloud Messaging Token Generator</h1>
+    <button id="requestPermission">Request Notification Permission</button>
+    <div id="token" style="margin-top: 20px; word-break: break-all"></div>
+
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+      import {
+        getMessaging,
+        getToken,
+        onMessage,
+      } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging.js";
+
+      // Firebase config (replace placeholders with your actual values)
+      const firebaseConfig = {
+        apiKey: "YOUR_FIREBASE_API_KEY",
+        authDomain: "YOUR_FIREBASE_AUTH_DOMAIN",
+        projectId: "YOUR_FIREBASE_PROJECT_ID",
+        storageBucket: "YOUR_FIREBASE_STORAGE_BUCKET",
+        messagingSenderId: "YOUR_FIREBASE_SENDER_ID",
+        appId: "YOUR_FIREBASE_APP_ID",
+        measurementId: "YOUR_FIREBASE_MEASUREMENT_ID",
+      };
+
+      // Initialize Firebase and Messaging
+      const app = initializeApp(firebaseConfig);
+      const messaging = getMessaging(app);
+
+      // Handle foreground messages
+      onMessage(messaging, (payload) => {
+        console.log("Foreground message received:", payload);
+        const { title, body } = payload.notification;
+        new Notification(title, { body });
+      });
+
+      document
+        .getElementById("requestPermission")
+        .addEventListener("click", async () => {
+          try {
+            const permission = await Notification.requestPermission();
+
+            if (permission === "granted") {
+              const token = await getToken(messaging, {
+                vapidKey: "YOUR_PUBLIC_VAPID_KEY",
+              });
+
+              document.getElementById("token").innerHTML = `
+                <p><strong>Your FCM Token:</strong></p>
+                <textarea rows="5" cols="80">${token}</textarea>
+                <p>Copy this token and add it to your .env file</p>
+              `;
+            } else {
+              document.getElementById("token").textContent =
+                "Permission denied";
+            }
+          } catch (error) {
+            document.getElementById("token").textContent =
+              "Error: " + error.message;
+          }
+        });
+    </script>
+  </body>
+</html>

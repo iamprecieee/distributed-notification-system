@@ -1,0 +1,99 @@
+networks:
+  notification-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+  rabbitmq_data:
+
+services:
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: notification-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - notification-network
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # RabbitMQ Message Broker
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: notification-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - notification-network
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: notification-api-gateway
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_PREFIX: api
+
+      # JWT
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: 24h
+
+      # Services
+      USER_SERVICE_URL: http://user-service:3001
+      TEMPLATE_SERVICE_URL: http://template-service:3002
+      EMAIL_SERVICE_URL: http://email-service:3003
+      PUSH_SERVICE_URL: http://push-service:3004
+
+      # RabbitMQ
+      RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672
+      RABBITMQ_QUEUE_PREFIX: notifications
+
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+
+      # Rate Limiting
+      RATE_LIMIT_TTL: 60000
+      RATE_LIMIT_MAX: 100
+
+      # Timeouts
+      HTTP_TIMEOUT: 5000
+      CIRCUIT_BREAKER_TIMEOUT: 10000
+      CIRCUIT_BREAKER_THRESHOLD: 5
+      CIRCUIT_BREAKER_RESET_TIMEOUT: 30000
+
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - notification-network
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
