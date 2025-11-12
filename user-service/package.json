@@ -25,7 +25,8 @@
     "migration:revert": "npm run typeorm -- migration:revert",
     "migration:show": "npm run typeorm -- migration:show",
     "schema:drop": "npm run typeorm -- schema:drop",
-    "schema:sync": "npm run typeorm -- schema:sync"
+    "schema:sync": "npm run typeorm -- schema:sync",
+    "docker:migrate": "docker compose exec user-service npx typeorm migration:run -d /app/dist/database/data-source.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

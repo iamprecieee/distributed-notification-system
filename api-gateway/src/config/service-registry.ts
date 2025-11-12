@@ -10,34 +10,34 @@ export interface ServiceConfig {
 export const SERVICE_REGISTRY: ServiceConfig[] = [
   {
     name: 'user-service',
-    url: process.env.USER_SERVICE_URL || 'http://localhost:3001',
-    prefix: '/users',
+    url: process.env.USER_SERVICE_URL || 'http://localhost:8083',
+    prefix: '',
     timeout: 5000,
-    requiresAuth: true,
+    requiresAuth: false,
     healthCheck: '/health',
   },
   {
     name: 'template-service',
-    url: process.env.TEMPLATE_SERVICE_URL || 'http://localhost:3002',
-    prefix: '/templates',
+    url: process.env.TEMPLATE_SERVICE_URL || 'http://localhost:8084',
+    prefix: '',
     timeout: 5000,
-    requiresAuth: true,
+    requiresAuth: false,
     healthCheck: '/health',
   },
   {
     name: 'email-service',
-    url: process.env.EMAIL_SERVICE_URL || 'http://localhost:3003',
+    url: process.env.EMAIL_SERVICE_URL || 'http://localhost:8085',
     prefix: '/email',
     timeout: 5000,
-    requiresAuth: true,
+    requiresAuth: false,
     healthCheck: '/health',
   },
   {
     name: 'push-service',
-    url: process.env.PUSH_SERVICE_URL || 'http://localhost:3004',
-    prefix: '/push',
+    url: process.env.PUSH_SERVICE_URL || 'http://localhost:8082',
+    prefix: '',
     timeout: 5000,
-    requiresAuth: true,
+    requiresAuth: false,
     healthCheck: '/health',
   },
 ];
@@ -48,4 +48,8 @@ export function getServiceByPrefix(prefix: string): ServiceConfig | undefined {
 
 export function getAllServices(): ServiceConfig[] {
   return SERVICE_REGISTRY;
+}
+
+export function getServiceByName(name: string): ServiceConfig | undefined {
+  return SERVICE_REGISTRY.find((service) => service.name === name);
 }

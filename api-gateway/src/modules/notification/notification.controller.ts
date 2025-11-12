@@ -6,6 +6,7 @@ import {
   Param,
   Headers,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,7 +22,7 @@ import { SkipAuth } from 'src/core/auth/skip-auth.decorator';
 
 @ApiTags('notifications')
 @Controller('notifications')
-@SkipAuth()
+// @SkipAuth()
 // @UseGuards(JwtAuthGuard)
 // @ApiBearerAuth()
 export class NotificationController {
@@ -41,6 +42,7 @@ export class NotificationController {
     description: 'Unique key to prevent duplicate requests',
     required: true,
   })
+  // @UseGuards(JwtAuthGuard)
   async sendNotification(
     @Body() dto: SendNotificationDto,
     @Headers('x-idempotency-key') idempotencyKey: string,

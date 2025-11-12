@@ -57,6 +57,7 @@ export class NotificationService {
         ...dto,
         created_by: dto.user_id,
         timestamp: new Date().toISOString(),
+        push_token: user?.preferences?.push ? user.push_token : undefined,
       };
 
       for (const queue of queues) {

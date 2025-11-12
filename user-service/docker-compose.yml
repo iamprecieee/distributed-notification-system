@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: admin
       POSTGRES_DB: user_service_db
     ports:
-      - "5432:5432"
+      - '5437:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -15,25 +15,22 @@ services:
     image: redis:7-alpine
     container_name: user-service-redis
     ports:
-      - "6379:6379"
+      - '6382:6379'
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
 
   user-service:
     build:
-      context: ./user-service
+      context: .
       dockerfile: Dockerfile
-    
     container_name: user_service_app
-    
     ports:
-      - "3000:3000"
-      
+      - '8083:3001'
     environment:
       # App
       NODE_ENV: production
-      PORT: 3000
+      PORT: 3001
       API_PREFIX: api/v1
 
       # Database
@@ -46,7 +43,7 @@ services:
       # Redis
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      REDIS_PASSWORD: 
+      REDIS_PASSWORD:
       REDIS_TTL: 3600
 
       # JWT
@@ -58,7 +55,7 @@ services:
 
       # Logging
       LOG_LEVEL: info
-      
+
     depends_on:
       - postgres
       - redis
