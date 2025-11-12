@@ -4,6 +4,10 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+import { Reflector } from '@nestjs/core';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
   imports: [
@@ -17,8 +21,14 @@ import { JwtAuthGuard } from './jwt-auth.guard';
       }),
       inject: [ConfigService],
     }),
+    HttpModule.register({
+      timeout: 5000,
+      maxRedirects: 5,
+    }),
+    Reflector,
   ],
-  providers: [JwtStrategy, JwtAuthGuard],
-  exports: [JwtStrategy, PassportModule, JwtAuthGuard],
+  providers: [JwtStrategy, JwtAuthGuard, AuthService],
+  controllers: [AuthController],
+  exports: [JwtStrategy, PassportModule, JwtAuthGuard, AuthService],
 })
 export class AuthModule {}

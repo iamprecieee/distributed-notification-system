@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ProxyController } from './proxy.controller';
 import { ProxyService } from './proxy.service';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -9,6 +10,7 @@ import { ProxyService } from './proxy.service';
       timeout: 30000,
       maxRedirects: 5,
     }),
+    AuthModule,
   ],
   controllers: [ProxyController],
   providers: [ProxyService],

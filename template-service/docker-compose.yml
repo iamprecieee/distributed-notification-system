@@ -6,7 +6,7 @@ services:
     container_name: template-service
     env_file: .env
     ports:
-      - "8084:8084"
+      - '8084:8084'
     depends_on:
       postgres:
         condition: service_healthy
@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
     command: sh -c "npm run migration:run && node dist/main.js"
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8084/health || exit 1"]
+      test: ['CMD-SHELL', 'curl -f http://localhost:8084/health || exit 1']
       interval: 30s
       timeout: 10s
       retries: 3
@@ -30,17 +30,17 @@ services:
     container_name: template-service-postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: BiggestLens
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: template_db
     ports:
-      - "5433:5432"
+      - '5435:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - app-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -50,7 +50,7 @@ services:
     image: redis:7-alpine
     container_name: template-service-redis
     ports:
-      - "6380:6379"
+      - '6380:6379'
     networks:
       - app-network
     restart: unless-stopped
@@ -58,7 +58,7 @@ services:
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
@@ -70,15 +70,15 @@ services:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
     ports:
-      - "5673:5672"
-      - "15673:15672"
+      - '5673:5672'
+      - '15673:15672'
     networks:
       - app-network
     restart: unless-stopped
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      test: ['CMD', 'rabbitmq-diagnostics', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
