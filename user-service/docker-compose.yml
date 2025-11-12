@@ -3,9 +3,9 @@ services:
     image: postgres:15-alpine
     container_name: user-service-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: admin
-      POSTGRES_DB: user_service_db
+      POSTGRES_USER: ${DATABASE_USERNAME}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+      POSTGRES_DB: ${DATABASE_NAME}
     ports:
       - "5432:5432"
     volumes:
@@ -22,7 +22,7 @@ services:
 
   user-service:
     build:
-      context: ./user-service
+      context: .
       dockerfile: Dockerfile
     
     container_name: user_service_app
@@ -32,26 +32,26 @@ services:
       
     environment:
       # App
-      NODE_ENV: production
-      PORT: 3000
-      API_PREFIX: api/v1
+      NODE_ENV: ${NODE_ENV}
+      PORT: ${PORT}
+      API_PREFIX: ${API_PREFIX}
 
       # Database
-      DATABASE_HOST: postgres
+      DATABASE_HOST: ${DATABASE_HOST}
       DATABASE_PORT: 5432
-      DATABASE_USERNAME: postgres
-      DATABASE_PASSWORD: admin
-      DATABASE_NAME: user_service_db
+      DATABASE_USERNAME: ${DATABASE_USERNAME}
+      DATABASE_PASSWORD: ${DATABASE_PASSWORD}
+      DATABASE_NAME: ${DATABASE_NAME}
 
       # Redis
-      REDIS_HOST: redis
+      REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: 6379
       REDIS_PASSWORD: 
-      REDIS_TTL: 3600
+      REDIS_TTL: ${REDIS_TTL}
 
       # JWT
       JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRATION: 24h
+      JWT_EXPIRATION: ${JWT_EXPIRATION}
 
       # Service
       SERVICE_NAME: user-service
