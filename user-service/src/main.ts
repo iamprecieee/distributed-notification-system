@@ -34,6 +34,15 @@ async function bootstrap() {
     new ClassSerializerInterceptor(app.get('Reflector')),
   );
 
+  app.enableCors({
+    origin:
+      // configService.get('environment') === 'development'
+      //   ? '*'
+      //   : ['https://yourdomain.com'],
+      '*',
+    credentials: true,
+  });
+
   // Swagger documentation
   const swaggerConfig = new DocumentBuilder()
     .setTitle('User Service API')
@@ -55,6 +64,11 @@ async function bootstrap() {
       },
       'JWT-auth',
     )
+    // .addServer(
+    //   `http://localhost:${configService.get('port')}`,
+    //   'Local Development',
+    // )
+    // .addServer('https://api.yourdomain.com', 'Production')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);
@@ -70,16 +84,11 @@ async function bootstrap() {
     },
   });
 
-  app.enableCors({
-    origin: '*',
-    credentials: true,
-  });
-
   // Graceful shutdown
   app.enableShutdownHooks();
 
   const port = configService.get<number>('port') || 3000;
-  await app.listen(port);
+  await app.listen(port, '0.0.0.0');
   logger.log(`User Service running on port ${port}`);
   logger.log(`API Documentation: http://localhost:${port}/api/docs`);
 }

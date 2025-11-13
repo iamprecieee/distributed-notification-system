@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
       POSTGRES_DB: ${DATABASE_NAME}
     ports:
-      - "5432:5432"
+      - '5437:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -15,7 +15,7 @@ services:
     image: redis:7-alpine
     container_name: user-service-redis
     ports:
-      - "6379:6379"
+      - '6382:6379'
     volumes:
       - redis_data:/data
     command: redis-server --appendonly yes
@@ -26,7 +26,7 @@ services:
       dockerfile: Dockerfile
     container_name: user_service_app
     ports:
-      - "3000:3000"  
+      - '3000:3000'
 
     environment:
       NODE_ENV: ${NODE_ENV}
@@ -55,7 +55,7 @@ services:
 
       # Logging
       LOG_LEVEL: info
-     
+
     depends_on:
       - postgres
       - redis

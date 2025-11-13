@@ -28,6 +28,10 @@ export class NotificationService {
     idempotencyKey: string,
     user: any
   ) {
+    this.logger.log(
+      `User info in NotificationService: ${JSON.stringify(user)}`
+    );
+
     // Check idempotency
     const idempotencyCheck = await this.redis.get(
       `idempotency:${idempotencyKey}`
@@ -45,7 +49,13 @@ export class NotificationService {
       await this.redis.setex(`idempotency:${idempotencyKey}`, 86400, '1');
 
       // Store notification status
-      await this.storeNotificationStatus(dto.request_id, dto, dto.user_id);
+      await this.storeNotificationStatus(
+        dto.request_id,
+        dto,
+        user.user_id,
+        'pending',
+        user.push_token
+      );
 
       // Determine queues based on type
       const queues = this.getQueuesForType(dto.notification_type);
@@ -54,9 +64,11 @@ export class NotificationService {
       const message = {
         notification_id: dto.request_id,
         idempotency_key: idempotencyKey,
-        ...dto,
-        created_by: dto.user_id,
+        user_id: user.user_id,
+        created_by: user.user_id,
         timestamp: new Date().toISOString(),
+        push_token: user.push_token,
+        ...dto,
       };
 
       for (const queue of queues) {
@@ -79,8 +91,9 @@ export class NotificationService {
       await this.storeNotificationStatus(
         dto.request_id,
         dto,
-        dto.user_id,
-        'failed'
+        user.user_id,
+        'failed',
+        user.push_token
       );
       throw error;
     }
@@ -111,13 +124,15 @@ export class NotificationService {
     notificationId: string,
     dto: SendNotificationDto,
     createdBy: string,
-    status: string = 'pending'
+    status: string = 'pending',
+    push_token: string
   ): Promise<void> {
     const data = {
       notification_id: notificationId,
       status,
       type: dto.notification_type,
-      user_id: dto.user_id,
+      user_id: createdBy,
+      push_token: push_token,
       template_code: dto.template_code,
       created_by: createdBy,
       created_at: new Date().toISOString(),

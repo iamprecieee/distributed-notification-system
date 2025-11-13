@@ -47,7 +47,7 @@ services:
       dockerfile: Dockerfile
     container_name: notification-api-gateway
     ports:
-      - '3000:3000'
+      - '8081:3000'
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -58,10 +58,10 @@ services:
       JWT_EXPIRATION: 24h
 
       # Services
-      USER_SERVICE_URL: http://user-service:3001
-      TEMPLATE_SERVICE_URL: http://template-service:3002
-      EMAIL_SERVICE_URL: http://email-service:3003
-      PUSH_SERVICE_URL: http://push-service:3004
+      USER_SERVICE_URL: http://localhost:8083
+      TEMPLATE_SERVICE_URL: http://localhost:8084
+      EMAIL_SERVICE_URL: http://localhost:8085
+      PUSH_SERVICE_URL: http://localhost:8082
 
       # RabbitMQ
       RABBITMQ_URL: amqp://admin:admin@rabbitmq:5672

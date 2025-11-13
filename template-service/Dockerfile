@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
 # Install curl for healthcheck
-RUN apk add --no-cache curl
+# RUN apk add --no-cache curl
 
 # Create app directory
 WORKDIR /app
