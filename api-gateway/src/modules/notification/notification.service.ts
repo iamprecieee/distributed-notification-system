@@ -156,7 +156,7 @@ export class NotificationService {
       case 'email':
         return [`${prefix}.email.queue`];
       case 'push':
-        return [`${prefix}.push.queue`];
+        return [`push_notifications`];
       default:
         throw new BadRequestException(`Invalid notification type: ${type}`);
     }
