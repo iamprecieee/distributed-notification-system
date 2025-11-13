@@ -61,14 +61,126 @@ CREATE INDEX idx_users_email ON users(email);
 **Flow:**
 1. Find user by email
 2. Verify password with bcrypt → `401 Unauthorized` if invalid
-3. Generate JWT (HS256, 24h expiry)
-4. Return token and user info
+3. Generate JWT access token (HS256, 24h expiry)
+4. Generate refresh token (UUID, stored in database/Redis with 7 day expiry)
+5. Return tokens and user info
 
-**Response:** `200 OK` with JWT access token
+**Response:** `200 OK`
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "uuid-refresh-token",
+  "token_type": "Bearer",
+  "expires_in": 86400,
+  "user": {
+    "id": "user_id",
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+}
+```
 
 ---
 
-### 3. Get Preferences (High-Frequency)
+### 3. Refresh Token
+`POST /api/v1/auth/refresh`
+
+**Request:**
+```json
+{
+  "refresh_token": "uuid-refresh-token"
+}
+```
+
+**Flow:**
+1. Validate refresh token exists and not expired
+2. Verify refresh token in database/Redis
+3. Generate new JWT access token (24h expiry)
+4. Optionally rotate refresh token
+5. Return new tokens
+
+**Response:** `200 OK`
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "new-uuid-refresh-token",
+  "token_type": "Bearer",
+  "expires_in": 86400,
+  "user": {
+    "id": "user_id",
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+}
+```
+
+---
+
+### 4. Logout
+`POST /api/v1/auth/logout`
+
+**Request:**
+```json
+{
+  "refresh_token": "uuid-refresh-token"
+}
+```
+
+**Flow:**
+1. Verify JWT from Authorization header
+2. Remove refresh token from database/Redis
+3. Optionally blacklist access token (if implementing token revocation)
+4. Return success response
+
+**Response:** `200 OK`
+```json
+{
+  "success": true,
+  "message": "Logged out successfully"
+}
+```
+
+---
+
+### 5. Validate Token
+`POST /api/v1/auth/validate`
+
+**Request:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Flow:**
+1. Verify JWT signature
+2. Check token expiration
+3. Optionally check token blacklist
+4. Extract user information from payload
+5. Return validation result
+
+**Response:** `200 OK`
+```json
+{
+  "valid": true,
+  "user_id": "user_id",
+  "email": "john@example.com",
+  "push_token": "fcm_token",
+  "expires_at": 1699790400
+}
+```
+
+**Invalid Response:** `200 OK`
+```json
+{
+  "valid": false,
+  "reason": "Token expired"
+}
+```
+
+---
+
+### 6. Get Preferences (High-Frequency)
 `GET /api/v1/users/{id}/preferences`
 
 **Flow:**
@@ -81,7 +193,7 @@ CREATE INDEX idx_users_email ON users(email);
 
 ---
 
-### 4. Update User
+### 7. Update User
 `PATCH /api/v1/users/{id}`
 
 **Request:** (all optional)
@@ -102,7 +214,7 @@ CREATE INDEX idx_users_email ON users(email);
 
 ---
 
-### 5. Get User by ID
+### 8. Get User by ID
 `GET /api/v1/users/{id}`
 
 Query database and return user data (excluding password_hash).
@@ -111,7 +223,7 @@ Query database and return user data (excluding password_hash).
 
 ---
 
-### 6. List Users
+### 9. List Users
 `GET /api/v1/users?page=1&limit=10`
 
 Paginated list with default limit=10, max=100.
@@ -120,13 +232,14 @@ Paginated list with default limit=10, max=100.
 
 ---
 
-### 7. Delete User
+### 10. Delete User
 `DELETE /api/v1/users/{id}`
 
 **Flow:**
 1. Verify JWT and ownership/admin role
 2. Delete from database
 3. Invalidate all user caches
+4. Remove all refresh tokens
 
 **Response:** `200 OK`
 
@@ -136,15 +249,18 @@ Paginated list with default limit=10, max=100.
 
 **Keys:**
 - `user:preferences:{id}` - TTL: 3600s
+- `refresh_token:{token}` - TTL: 604800s (7 days)
+- `token_blacklist:{token}` - TTL: varies (optional)
 
 **Invalidation:**
 - On user update/delete
+- On logout (refresh tokens)
 
 ---
 
 ## Authentication
 
-**JWT Payload:**
+**JWT Access Token Payload:**
 ```json
 {
   "sub": "user_id",
@@ -154,19 +270,31 @@ Paginated list with default limit=10, max=100.
 }
 ```
 
-**Config:**
+**JWT Config:**
 - Algorithm: HS256
 - Expiration: 24h
 - Secret: `JWT_SECRET` env var
 
-**Protected Endpoints:** All except `/auth/login` and `POST /users/create`
+**Refresh Token:**
+- Format: UUID v4
+- Storage: Redis/Database
+- Expiration: 7 days
+- One-time use (rotate on refresh)
+
+**Protected Endpoints:** All except `/auth/login`, `POST /users/create`, and `/auth/validate`
 
 ---
 
 ## Health Check
-`GET /api/v1/health`
+`GET /health`
 
 Returns status of database and Redis connections.
+
+**Response:** `200 OK` or `503 Service Unavailable`
+
+`GET /health/test-redis`
+
+Returns status of Redis connections.
 
 **Response:** `200 OK` or `503 Service Unavailable`
 
