@@ -53,9 +53,6 @@ export class AuthService {
         throw new UnauthorizedException('Token validation failed');
       }
 
-      this.logger.log(
-        `Token validated from request with data ${JSON.stringify(response.data)}`
-      );
       return response.data.data;
     } catch (error) {
       this.logger.error('Authentication error:', error.message);

@@ -76,7 +76,14 @@ async function bootstrap() {
       .setTitle('Notification System API Gateway')
       .setDescription('API Gateway for Distributed Notification System')
       .setVersion('1.0')
-      .addBearerAuth()
+      .addBearerAuth(
+        {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+        },
+        'JWT'
+      )
       .addTag('auth', 'Authentication endpoints')
       .addTag('notifications', 'Notification management')
       .addTag('health', 'Health check endpoints')

@@ -37,8 +37,7 @@ import { ProxyModule } from './core/proxy/proxy.module';
     HealthModule,
     AuthModule,
     NotificationModule,
-
-    // ProxyModule,
+    ProxyModule,
   ],
   providers: [
     {

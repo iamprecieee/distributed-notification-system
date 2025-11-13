@@ -43,6 +43,7 @@ export class NotificationController {
     required: true,
   })
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
   async sendNotification(
     @Body() dto: SendNotificationDto,
     @Headers('x-idempotency-key') idempotencyKey: string,
@@ -55,6 +56,7 @@ export class NotificationController {
    * Gateway-specific endpoint: Get notification status
    */
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
   @Get('status/:notification_id')
   @ApiOperation({
     summary: 'Get notification status (Gateway tracks this)',

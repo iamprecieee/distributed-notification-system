@@ -126,8 +126,11 @@ export class AuthController {
   /**
    * Get current user (requires authentication)
    */
+  @ApiTags('Auth')
+  @ApiOperation({ summary: 'Get current user' })
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT')
   async getCurrentUser(@Req() req: Request) {
     return {
       success: true,
