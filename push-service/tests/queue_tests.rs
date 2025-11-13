@@ -15,6 +15,7 @@ use push_service::{
     models::message::{DlqMessage, NotificationMessage},
 };
 use tokio::time::sleep;
+use uuid::Uuid;
 
 /// Test: Valid messages are successfully acknowledged
 #[tokio::test]
@@ -180,7 +181,8 @@ async fn test_message_structure_preservation() -> Result<()> {
     metadata.insert("priority".to_string(), serde_json::json!("high"));
 
     let original = NotificationMessage {
-        idempotency_key: format!("test_structure_{}", uuid::Uuid::new_v4()),
+        notification_id: format!("cnotif_{}", Uuid::new_v4()),
+        idempotency_key: format!("test_structure_{}", Uuid::new_v4()),
         notification_type: "push".to_string(),
         user_id: "user_456".to_string(),
         template_code: "WELCOME".to_string(),
@@ -257,7 +259,8 @@ fn create_test_notification_message(suffix: &str) -> NotificationMessage {
     );
 
     NotificationMessage {
-        idempotency_key: format!("idem_{}_{}", suffix, uuid::Uuid::new_v4()),
+        notification_id: format!("cnotif_{}", Uuid::new_v4()),
+        idempotency_key: format!("idem_{}_{}", suffix, Uuid::new_v4()),
         notification_type: "push".to_string(),
         user_id: format!("user_{}", suffix),
         template_code: "TEST_TEMPLATE".to_string(),

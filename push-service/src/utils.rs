@@ -10,7 +10,7 @@ use crate::{
     config::Config,
     models::{
         audit::CreateAuditLog,
-        message::NotificationMessage,
+        message::{Envelope},
         retry::RetryConfig,
         status::{IdempotencyStatus, NotificationStatus},
         validation::validate_fcm_token,
@@ -24,7 +24,9 @@ pub async fn process_message(
     fcm_client: &mut FcmClient,
     database_client: &DatabaseClient,
 ) -> Result<(), Error> {
-    let message = serde_json::from_str::<NotificationMessage>(payload)?;
+    info!("Raw payload: {}", payload);
+    let enveloped = serde_json::from_str::<Envelope>(payload)?;
+    let message = enveloped.data;
 
     info!(
         request_id = %message.request_id,

@@ -59,11 +59,6 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     // Declare email queue with DLX
     await this.channel.assertQueue(emailQueue, {
       durable: true,
-      arguments: {
-        'x-dead-letter-exchange': 'dlx.exchange',
-        'x-dead-letter-routing-key': 'failed',
-        'x-message-ttl': 3600000, // 1 hour TTL
-      },
     });
 
     // Bind queue to exchange

@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NotificationMessage {
+    pub notification_id: String,
     pub idempotency_key: String,
     pub notification_type: String,
     pub user_id: String,
@@ -21,4 +22,10 @@ pub struct DlqMessage {
     pub original_message: NotificationMessage,
     pub failure_reason: String,
     pub failed_at: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Envelope {
+    pub pattern: String,
+    pub data: NotificationMessage,
 }

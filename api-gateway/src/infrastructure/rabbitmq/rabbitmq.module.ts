@@ -13,15 +13,10 @@ import { RabbitMQService } from './rabbitmq.service';
           transport: Transport.RMQ,
           options: {
             urls: [configService.get<string>('rabbitmq.url')],
-            queue: `${configService.get<string>('rabbitmq.queuePrefix')}_main`,
+            queue: `push_notifications`,
             persistent: true,
             queueOptions: {
               durable: true,
-              arguments: {
-                'x-dead-letter-exchange': 'dlx',
-                'x-dead-letter-routing-key': 'failed',
-                'x-message-ttl': 3600000, // 1 hour
-              },
             },
           },
         }),

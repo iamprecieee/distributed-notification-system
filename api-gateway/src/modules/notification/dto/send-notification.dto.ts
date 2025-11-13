@@ -16,7 +16,7 @@ export enum NotificationType {
 export type UserData = {
   name: string;
   link: string;
-  meta?: Record<string, any>;
+  // meta?: Record<string, any>;
 };
 
 export class SendNotificationDto {
@@ -31,7 +31,6 @@ export class SendNotificationDto {
 
   @ApiProperty({ example: '660e8400-e29b-41d4-a716-446655440001' })
   @IsString()
-  @IsUUID()
   template_code: string;
 
   @ApiProperty({

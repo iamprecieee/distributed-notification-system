@@ -252,6 +252,7 @@ async fn test_end_to_end_complete_message_processing() -> Result<()> {
     metadata.insert("ip_address".to_string(), serde_json::json!("192.168.1.1"));
 
     let message = NotificationMessage {
+        notification_id: format!("cnotif_{}", Uuid::new_v4()),
         idempotency_key: format!("complete_{}", Uuid::new_v4()),
         notification_type: "push".to_string(),
         user_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
@@ -535,6 +536,7 @@ fn create_notification_message(suffix: &str) -> NotificationMessage {
     );
 
     NotificationMessage {
+        notification_id: format!("cnotif_{}", Uuid::new_v4()),
         idempotency_key: format!("idem_{}_{}", suffix, Uuid::new_v4()),
         notification_type: "push".to_string(),
         user_id: "550e8400-e29b-41d4-a716-446655440000".to_string(),
