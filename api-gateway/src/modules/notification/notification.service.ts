@@ -16,7 +16,10 @@ export class NotificationService {
 
   constructor(
     @Inject('RABBITMQ_CLIENT') private readonly rabbitMQClient: ClientProxy,
-    @Inject('REDIS_CLIENT') private readonly redis: Redis,
+    @Inject('RABBITMQ_CLIENT_EMAIL')
+    private readonly rabbitMQClientEmail: ClientProxy,
+    @Inject('REDIS_CLIENT')
+    private readonly redis: Redis,
     private readonly configService: ConfigService
   ) {}
 
@@ -72,7 +75,11 @@ export class NotificationService {
       };
 
       for (const queue of queues) {
-        this.rabbitMQClient.emit(queue, message);
+        if (queue === 'email.queue') {
+          this.rabbitMQClientEmail.emit(queue, message);
+        } else {
+          this.rabbitMQClient.emit(queue, message);
+        }
         this.logger.log(`📤 Message sent to queue: ${queue}`);
       }
 
@@ -154,7 +161,7 @@ export class NotificationService {
 
     switch (type) {
       case 'email':
-        return [`${prefix}.email.queue`];
+        return [`email.queue`];
       case 'push':
         return [`push_notifications`];
       default:

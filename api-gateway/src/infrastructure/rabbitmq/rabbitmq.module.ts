@@ -22,6 +22,19 @@ import { RabbitMQService } from './rabbitmq.service';
         }),
         inject: [ConfigService],
       },
+      {
+        name: 'RABBITMQ_CLIENT_EMAIL',
+        useFactory: (configService: ConfigService) => ({
+          transport: Transport.RMQ,
+          options: {
+            urls: [configService.get<string>('rabbitmq.url')],
+            queue: 'email.queue',
+            persistent: true,
+            queueOptions: { durable: true },
+          },
+        }),
+        inject: [ConfigService],
+      },
     ]),
   ],
   providers: [RabbitMQService],
