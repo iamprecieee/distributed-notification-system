@@ -4,7 +4,6 @@ import { HealthModule } from './modules/health/health.module';
 import { RabbitMQModule } from './modules/rabbitmq/rabbitmq.module';
 import { EmailModule } from './modules/email/email.module';
 
-
 @Module({
   imports: [
     ConfigModule.forRoot({

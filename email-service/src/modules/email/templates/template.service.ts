@@ -17,20 +17,23 @@ export class TemplateService {
 
     try {
       // Fetch from Template Service
-      const templateServiceUrl = process.env.TEMPLATE_SERVICE_URL || 'http://localhost:3004';
+      const templateServiceUrl =
+        process.env.TEMPLATE_SERVICE_URL || 'http://localhost:3004';
       const response = await firstValueFrom(
-        this.httpService.get(`${templateServiceUrl}/api/v1/templates/${templateCode}`)
+        this.httpService.get(
+          `${templateServiceUrl}/api/v1/templates/${templateCode}`,
+        ),
       );
 
       const template = response.data.data.content;
-      
+
       // Cache the template
       this.templateCache.set(templateCode, template);
-      
+
       return template;
     } catch (error) {
       this.logger.error(`Failed to fetch template: ${templateCode}`, error);
-      
+
       // Return default template
       return this.getDefaultTemplate();
     }

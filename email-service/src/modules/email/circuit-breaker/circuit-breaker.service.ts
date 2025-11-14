@@ -8,7 +8,7 @@ export class CircuitBreakerService {
   private state: CircuitState = CircuitState.CLOSED;
   private failureCount = 0;
   private successCount = 0;
-  private lastFailureTime: number | null= null;
+  private lastFailureTime: number | null = null;
   private readonly logger = new Logger(CircuitBreakerService.name);
 
   private readonly FAILURE_THRESHOLD = 5;
@@ -26,10 +26,15 @@ export class CircuitBreakerService {
         this.state = redisState.state;
         this.failureCount = redisState.failure_count || 0;
         this.lastFailureTime = redisState.last_failure_time || null;
-        this.logger.log(`Circuit breaker state synced from Redis: ${this.state}`);
+        this.logger.log(
+          `Circuit breaker state synced from Redis: ${this.state}`,
+        );
       }
     } catch (error) {
-      this.logger.error('Failed to sync circuit breaker state from Redis', error);
+      this.logger.error(
+        'Failed to sync circuit breaker state from Redis',
+        error,
+      );
     }
   }
 
@@ -42,7 +47,10 @@ export class CircuitBreakerService {
     }
 
     if (this.state === CircuitState.OPEN) {
-      if (this.lastFailureTime && Date.now() - this.lastFailureTime >= this.TIMEOUT) {
+      if (
+        this.lastFailureTime &&
+        Date.now() - this.lastFailureTime >= this.TIMEOUT
+      ) {
         this.logger.log('Circuit breaker entering HALF_OPEN state');
         this.state = CircuitState.HALF_OPEN;
         this.successCount = 0;
@@ -96,7 +104,10 @@ export class CircuitBreakerService {
         last_failure_time: this.lastFailureTime,
       });
     } catch (error) {
-      this.logger.error('Failed to update circuit breaker state in Redis', error);
+      this.logger.error(
+        'Failed to update circuit breaker state in Redis',
+        error,
+      );
     }
   }
 

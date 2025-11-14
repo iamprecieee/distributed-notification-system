@@ -1,4 +1,4 @@
-import { CircuitState } from "../enums/index.enums";
+import { CircuitState } from '../enums/index.enums';
 
 export interface EmailMessage {
   notification_id: string;

@@ -125,7 +125,7 @@ The service expects messages in this format from RabbitMQ:
 
 ### Health Check
 ```bash
-GET /api/v1/health
+GET /health
 ```
 
 Response:

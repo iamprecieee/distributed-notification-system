@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import * as amqp from 'amqplib';
 import { Connection, Channel, Message } from 'amqplib';
 
@@ -19,30 +24,35 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   }
 
   private async connect() {
-  const maxRetries = 5;
-  let retries = 0;
+    const maxRetries = 5;
+    let retries = 0;
 
-  while (retries < maxRetries) {
-    try {
-      const url = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
-      this.logger.log(`Connecting to RabbitMQ: ${url.replace(/:[^:@]+@/, ':****@')}`);
-      
-      this.connection = await amqp.connect(url) as any;
-      this.channel = await (this.connection as any).createChannel();
-      
-      this.logger.log('Connected to RabbitMQ');
-      return;
-    } catch (error) {
-      retries++;
-      this.logger.error(`Failed to connect to RabbitMQ (attempt ${retries}/${maxRetries}):`, error.message);
-      if (retries >= maxRetries) throw error;
-      await new Promise(resolve => setTimeout(resolve, 5000));
+    while (retries < maxRetries) {
+      try {
+        const url = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
+        this.logger.log(
+          `Connecting to RabbitMQ: ${url.replace(/:[^:@]+@/, ':****@')}`,
+        );
+
+        this.connection = (await amqp.connect(url)) as any;
+        this.channel = await (this.connection as any).createChannel();
+
+        this.logger.log('Connected to RabbitMQ');
+        return;
+      } catch (error) {
+        retries++;
+        this.logger.error(
+          `Failed to connect to RabbitMQ (attempt ${retries}/${maxRetries}):`,
+          error.message,
+        );
+        if (retries >= maxRetries) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
     }
   }
-}
 
   private async setupQueues() {
-    const exchange = 'notifications.direct';
+    const exchange = 'push_notifications';
     const emailQueue = 'email.queue';
     const failedQueue = 'failed.queue';
 
@@ -50,7 +60,9 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     await this.channel.assertExchange(exchange, 'direct', { durable: true });
 
     // Declare dead letter exchange and queue
-    await this.channel.assertExchange('dlx.exchange', 'direct', { durable: true });
+    await this.channel.assertExchange('dlx.exchange', 'direct', {
+      durable: true,
+    });
     await this.channel.assertQueue(failedQueue, {
       durable: true,
     });
@@ -95,7 +107,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
           this.channel.ack(msg);
         } catch (error) {
           this.logger.error('Error processing message', error);
-          
+
           const retryCount = this.getRetryCount(msg);
           const maxRetries = 3;
 

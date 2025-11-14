@@ -12,7 +12,7 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });
-  
+
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -28,12 +28,11 @@ async function bootstrap() {
     .addTag('health')
     .addTag('metrics')
     .build();
-  
+
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
   app.enableShutdownHooks();
-
 
   const port = process.env.PORT || 3002;
   await app.listen(port);

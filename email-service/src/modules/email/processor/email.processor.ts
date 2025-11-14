@@ -19,7 +19,7 @@ export class EmailProcessor implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 2000));
     this.startConsuming();
   }
 
@@ -29,7 +29,7 @@ export class EmailProcessor implements OnModuleInit {
       async (message: EmailMessage) => {
         await this.processEmail(message);
       },
-      { prefetch: 10 }
+      { prefetch: 10 },
     );
 
     this.logger.log('Started consuming from email.queue');
@@ -37,20 +37,24 @@ export class EmailProcessor implements OnModuleInit {
 
   private async processEmail(message: EmailMessage) {
     const startTime = Date.now();
-    
+
     try {
       // Distributed idempotency check using Redis (24h TTL)
       const alreadyProcessed = await this.redisService.checkAndMarkProcessed(
         message.request_id,
-        86400 // 24 hours
+        86400, // 24 hours
       );
 
       if (alreadyProcessed) {
-        this.logger.warn(`Duplicate message detected (Redis): ${message.request_id}`);
+        this.logger.warn(
+          `Duplicate message detected (Redis): ${message.request_id}`,
+        );
         return;
       }
 
-      this.logger.log(`Processing email notification: ${message.notification_id}`);
+      this.logger.log(
+        `Processing email notification: ${message.notification_id}`,
+      );
 
       // Increment processing counter
       await this.redisService.incrementCounter('emails_processed');
@@ -63,8 +67,13 @@ export class EmailProcessor implements OnModuleInit {
       });
 
       // Fetch and render template (with Redis caching)
-      const template = await this.templateService.getTemplate(message.template_code);
-      const renderedHtml = this.templateService.renderTemplate(template, message.variables);
+      const template = await this.templateService.getTemplate(
+        message.template_code,
+      );
+      const renderedHtml = this.templateService.renderTemplate(
+        template,
+        message.variables,
+      );
 
       // Extract subject from variables or use default
       const subject = message.variables.subject || 'Notification';
@@ -91,12 +100,17 @@ export class EmailProcessor implements OnModuleInit {
         // Increment success counter
         await this.redisService.incrementCounter('emails_delivered');
 
-        this.logger.log(`Email delivered successfully: ${message.notification_id}`);
+        this.logger.log(
+          `Email delivered successfully: ${message.notification_id}`,
+        );
       } else {
         throw new Error(result.error);
       }
     } catch (error) {
-      this.logger.error(`Failed to process email: ${message.notification_id}`, error);
+      this.logger.error(
+        `Failed to process email: ${message.notification_id}`,
+        error,
+      );
 
       // Increment failure counter
       await this.redisService.incrementCounter('emails_failed');

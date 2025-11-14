@@ -18,23 +18,27 @@ export class StatusService {
 
   async updateStatus(update: StatusUpdate): Promise<void> {
     try {
-      const apiGatewayUrl = process.env.API_GATEWAY_URL || 'http://localhost:3000';
-      
+      const apiGatewayUrl =
+        process.env.API_GATEWAY_URL || 'http://localhost:3000';
+
       await firstValueFrom(
-        this.httpService.post(
-          `${apiGatewayUrl}/api/v1/email/status`,
-          {
-            notification_id: update.notification_id,
-            status: update.status,
-            timestamp: update.timestamp.toISOString(),
-            error: update.error || null,
-            metadata: update.metadata || {},
-          }
-        )
+        this.httpService.post(`${apiGatewayUrl}/api/v1/email/status`, {
+          notification_id: update.notification_id,
+          status: update.status,
+          timestamp: update.timestamp.toISOString(),
+          error: update.error || null,
+          metadata: update.metadata || {},
+        }),
       );
 
-      this.logger.log(`Status updated for ${update.notification_id}: ${update.status}`);
+      this.logger.log(
+        `Status updated for ${update.notification_id}: ${update.status}`,
+      );
     } catch (error) {
-      this.logger.error(`Failed to update status for ${update.notification_id}`, error);    }
+      this.logger.error(
+        `Failed to update status for ${update.notification_id}`,
+        error,
+      );
+    }
   }
 }

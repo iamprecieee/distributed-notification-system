@@ -17,12 +17,14 @@ export class HealthController {
   async checkHealth() {
     const circuitStats = this.circuitBreaker.getStats();
     const redisHealthy = await this.redisService.ping();
-    
+
     const isHealthy = circuitStats.state !== 'OPEN' && redisHealthy;
 
     // Get metrics from Redis
-    const emailsProcessed = await this.redisService.getCounter('emails_processed');
-    const emailsDelivered = await this.redisService.getCounter('emails_delivered');
+    const emailsProcessed =
+      await this.redisService.getCounter('emails_processed');
+    const emailsDelivered =
+      await this.redisService.getCounter('emails_delivered');
     const emailsFailed = await this.redisService.getCounter('emails_failed');
 
     return {
@@ -39,9 +41,10 @@ export class HealthController {
           emails_processed: emailsProcessed,
           emails_delivered: emailsDelivered,
           emails_failed: emailsFailed,
-          success_rate: emailsProcessed > 0 
-            ? ((emailsDelivered / emailsProcessed) * 100).toFixed(2) + '%'
-            : '0%',
+          success_rate:
+            emailsProcessed > 0
+              ? ((emailsDelivered / emailsProcessed) * 100).toFixed(2) + '%'
+              : '0%',
         },
         uptime: process.uptime(),
         memory: process.memoryUsage(),
@@ -67,7 +70,9 @@ export class HealthController {
         info: info,
       },
       error: isConnected ? null : 'Redis connection failed',
-      message: isConnected ? 'Redis connection healthy' : 'Redis connection failed',
+      message: isConnected
+        ? 'Redis connection healthy'
+        : 'Redis connection failed',
       meta: null,
     };
   }
@@ -76,8 +81,10 @@ export class HealthController {
   @ApiOperation({ summary: 'Get service metrics' })
   @ApiResponse({ status: 200, description: 'Service metrics' })
   async getMetrics() {
-    const emailsProcessed = await this.redisService.getCounter('emails_processed');
-    const emailsDelivered = await this.redisService.getCounter('emails_delivered');
+    const emailsProcessed =
+      await this.redisService.getCounter('emails_processed');
+    const emailsDelivered =
+      await this.redisService.getCounter('emails_delivered');
     const emailsFailed = await this.redisService.getCounter('emails_failed');
     const circuitStats = this.circuitBreaker.getStats();
 
@@ -88,9 +95,10 @@ export class HealthController {
           processed: emailsProcessed,
           delivered: emailsDelivered,
           failed: emailsFailed,
-          success_rate: emailsProcessed > 0 
-            ? ((emailsDelivered / emailsProcessed) * 100).toFixed(2)
-            : 0,
+          success_rate:
+            emailsProcessed > 0
+              ? ((emailsDelivered / emailsProcessed) * 100).toFixed(2)
+              : 0,
         },
         circuit_breaker: circuitStats,
         timestamp: new Date().toISOString(),

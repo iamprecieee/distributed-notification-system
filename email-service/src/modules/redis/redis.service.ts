@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { createClient, RedisClientType } from 'redis';
 
 @Injectable()
@@ -132,7 +137,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   // Check and mark request as processed (idempotency)
-  async checkAndMarkProcessed(requestId: string, ttlSeconds: number = 86400): Promise<boolean> {
+  async checkAndMarkProcessed(
+    requestId: string,
+    ttlSeconds: number = 86400,
+  ): Promise<boolean> {
     const key = `idempotency:${requestId}`;
     try {
       const exists = await this.exists(key);
@@ -141,7 +149,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return true;
       }
 
-      await this.set(key, { processed_at: new Date().toISOString() }, ttlSeconds);
+      await this.set(
+        key,
+        { processed_at: new Date().toISOString() },
+        ttlSeconds,
+      );
       return false;
     } catch (error) {
       this.logger.error(`Idempotency check failed for: ${requestId}`, error);
@@ -163,14 +175,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     const key = `rate_limit:${identifier}`;
     try {
       const count = await this.client.incr(key);
-      
+
       if (count === 1) {
         await this.expire(key, windowSeconds);
       }
-      
+
       return count;
     } catch (error) {
-      this.logger.error(`Rate limit increment failed for: ${identifier}`, error);
+      this.logger.error(
+        `Rate limit increment failed for: ${identifier}`,
+        error,
+      );
       return 0;
     }
   }
@@ -208,7 +223,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     ttlSeconds: number = 3600,
   ): Promise<void> {
     const key = `template:${templateCode}`;
-    await this.set(key, { content, cached_at: new Date().toISOString() }, ttlSeconds);
+    await this.set(
+      key,
+      { content, cached_at: new Date().toISOString() },
+      ttlSeconds,
+    );
   }
 
   // Get cached template
