@@ -11,7 +11,7 @@ A microservice for processing email notifications using NestJS, RabbitMQ, and SM
 - ✅ **Idempotency**: Prevents duplicate email sends
 - ✅ **Template Rendering**: Fetches and renders email templates with variables
 - ✅ **Status Updates**: Reports delivery status to API Gateway
-- ✅ **Health Checks**: `/api/v1/health` endpoint for monitoring
+- ✅ **Health Checks**: `/health` endpoint for monitoring
 - ✅ **Docker Support**: Containerized with Docker Compose
 - ✅ **CI/CD Pipeline**: GitHub Actions workflow
 
@@ -79,7 +79,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
 SMTP_PASSWORD=your-16-char-app-password
-SMTP_FROM=notifications@example.com
+SMTP_FROM=your-email@gmail.com
 ```
 
 ### Alternative SMTP Providers
@@ -125,7 +125,7 @@ The service expects messages in this format from RabbitMQ:
 
 ### Health Check
 ```bash
-GET /api/v1/health
+GET /health
 ```
 
 Response:

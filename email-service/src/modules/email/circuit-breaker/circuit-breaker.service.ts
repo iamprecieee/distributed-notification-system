@@ -8,7 +8,7 @@ export class CircuitBreakerService {
   private state: CircuitState = CircuitState.CLOSED;
   private failureCount = 0;
   private successCount = 0;
-  private lastFailureTime: number | null= null;
+  private lastFailureTime: number | null = null;
   private readonly logger = new Logger(CircuitBreakerService.name);
 
   private readonly FAILURE_THRESHOLD = 5;
@@ -16,20 +16,27 @@ export class CircuitBreakerService {
   private readonly TIMEOUT = 60000; // 60 seconds
 
   constructor(private redisService: RedisService) {
-    this.syncStateFromRedis();
+    void this.syncStateFromRedis();
   }
 
-  private async syncStateFromRedis() {
+  private async syncStateFromRedis(): Promise<void> {
     try {
       const redisState = await this.redisService.getCircuitBreakerState('smtp');
       if (redisState) {
-        this.state = redisState.state;
+        this.state = redisState.state as CircuitState;
         this.failureCount = redisState.failure_count || 0;
         this.lastFailureTime = redisState.last_failure_time || null;
-        this.logger.log(`Circuit breaker state synced from Redis: ${this.state}`);
+        this.logger.log(
+          `Circuit breaker state synced from Redis: ${this.state}`,
+        );
       }
     } catch (error) {
-      this.logger.error('Failed to sync circuit breaker state from Redis', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        'Failed to sync circuit breaker state from Redis',
+        errorMessage,
+      );
     }
   }
 
@@ -38,11 +45,14 @@ export class CircuitBreakerService {
     const redisState = await this.redisService.getCircuitBreakerState('smtp');
     if (redisState && redisState.state === 'OPEN') {
       this.state = CircuitState.OPEN;
-      this.lastFailureTime = redisState.last_failure_time;
+      this.lastFailureTime = redisState.last_failure_time || null;
     }
 
     if (this.state === CircuitState.OPEN) {
-      if (this.lastFailureTime && Date.now() - this.lastFailureTime >= this.TIMEOUT) {
+      if (
+        this.lastFailureTime &&
+        Date.now() - this.lastFailureTime >= this.TIMEOUT
+      ) {
         this.logger.log('Circuit breaker entering HALF_OPEN state');
         this.state = CircuitState.HALF_OPEN;
         this.successCount = 0;
@@ -62,7 +72,7 @@ export class CircuitBreakerService {
     }
   }
 
-  private async onSuccess() {
+  private async onSuccess(): Promise<void> {
     this.failureCount = 0;
 
     if (this.state === CircuitState.HALF_OPEN) {
@@ -76,7 +86,7 @@ export class CircuitBreakerService {
     }
   }
 
-  private async onFailure() {
+  private async onFailure(): Promise<void> {
     this.failureCount++;
     this.lastFailureTime = Date.now();
     this.successCount = 0;
@@ -88,7 +98,7 @@ export class CircuitBreakerService {
     }
   }
 
-  private async updateRedisState() {
+  private async updateRedisState(): Promise<void> {
     try {
       await this.redisService.setCircuitBreakerState('smtp', this.state, {
         failure_count: this.failureCount,
@@ -96,7 +106,12 @@ export class CircuitBreakerService {
         last_failure_time: this.lastFailureTime,
       });
     } catch (error) {
-      this.logger.error('Failed to update circuit breaker state in Redis', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        'Failed to update circuit breaker state in Redis',
+        errorMessage,
+      );
     }
   }
 

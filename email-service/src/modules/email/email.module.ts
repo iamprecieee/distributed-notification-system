@@ -5,18 +5,18 @@ import { EmailProcessor } from './processor/email.processor';
 import { TemplateService } from './templates/template.service';
 import { CircuitBreakerService } from './circuit-breaker/circuit-breaker.service';
 import { StatusService } from './status/status.service';
-import { RabbitMQService } from '../rabbitmq/rabbitmq.service';
 import { RedisModule } from '../redis/redis.module';
+import { RabbitMQModule } from '../rabbitmq/rabbitmq.module';
 
 @Module({
-  imports: [HttpModule, RedisModule],
+  imports: [HttpModule, RedisModule, RabbitMQModule],
+  controllers: [EmailProcessor],
   providers: [
     EmailService,
-    EmailProcessor,
     TemplateService,
     CircuitBreakerService,
     StatusService,
-    RabbitMQService
   ],
+  exports: [EmailService],
 })
 export class EmailModule {}

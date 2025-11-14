@@ -1,6 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
+import { AxiosResponse } from 'axios';
+import { TemplateVariables } from 'src/common/interfaces/index.interface';
+
+interface TemplateResponse {
+  data: {
+    content: string;
+  };
+}
 
 @Injectable()
 export class TemplateService {
@@ -12,56 +20,40 @@ export class TemplateService {
   async getTemplate(templateCode: string): Promise<string> {
     // Check cache first
     if (this.templateCache.has(templateCode)) {
-      return this.templateCache.get(templateCode)!;
+      const cached = this.templateCache.get(templateCode);
+      if (cached) return cached;
     }
 
-    try {
-      // Fetch from Template Service
-      const templateServiceUrl = process.env.TEMPLATE_SERVICE_URL || 'http://localhost:3004';
-      const response = await firstValueFrom(
-        this.httpService.get(`${templateServiceUrl}/api/v1/templates/${templateCode}`)
-      );
+    const templateServiceUrl =
+      process.env.TEMPLATE_SERVICE_URL || 'http://localhost:3004';
 
-      const template = response.data.data.content;
-      
-      // Cache the template
-      this.templateCache.set(templateCode, template);
-      
-      return template;
-    } catch (error) {
-      this.logger.error(`Failed to fetch template: ${templateCode}`, error);
-      
-      // Return default template
-      return this.getDefaultTemplate();
-    }
+    const response: AxiosResponse<TemplateResponse> = await firstValueFrom(
+      this.httpService.get<TemplateResponse>(
+        `${templateServiceUrl}/api/v1/templates/${templateCode}`,
+      ),
+    );
+
+    const template = response.data.data.content;
+
+    // Cache the template
+    this.templateCache.set(templateCode, template);
+
+    return template;
   }
 
-  renderTemplate(template: string, variables: Record<string, any>): string {
+  renderTemplate(template: string, variables: TemplateVariables): string {
     let rendered = template;
-
-    // Replace {{variable}} with actual values
     Object.keys(variables).forEach((key) => {
       const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-      rendered = rendered.replace(regex, variables[key] || '');
+      const value = variables[key];
+      const stringValue =
+        value !== null && value !== undefined ? String(value) : '';
+      rendered = rendered.replace(regex, stringValue);
     });
-
     return rendered;
   }
 
-  private getDefaultTemplate(): string {
-    return `
-      <html>
-        <body>
-          <h2>{{title}}</h2>
-          <p>{{message}}</p>
-          <p>{{name}}</p>
-          <a href="{{link}}">Click here</a>
-        </body>
-      </html>
-    `;
-  }
-
-  clearCache() {
+  clearCache(): void {
     this.templateCache.clear();
   }
 }

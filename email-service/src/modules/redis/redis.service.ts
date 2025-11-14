@@ -1,20 +1,48 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { createClient, RedisClientType } from 'redis';
+
+interface CachedTemplate {
+  content: string;
+  cached_at: string;
+}
+
+interface CircuitBreakerMetadata {
+  failure_count?: number;
+  success_count?: number;
+  last_failure_time?: number | null;
+}
+
+interface CircuitBreakerState {
+  state: 'OPEN' | 'CLOSED' | 'HALF_OPEN';
+  updated_at: string;
+  failure_count?: number;
+  success_count?: number;
+  last_failure_time?: number | null;
+}
+
+interface IdempotencyRecord {
+  processed_at: string;
+}
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
-  private client: RedisClientType;
+  private client: RedisClientType | null = null;
   private readonly logger = new Logger(RedisService.name);
 
-  async onModuleInit() {
+  async onModuleInit(): Promise<void> {
     await this.connect();
   }
 
-  async onModuleDestroy() {
+  async onModuleDestroy(): Promise<void> {
     await this.disconnect();
   }
 
-  private async connect() {
+  private async connect(): Promise<void> {
     const maxRetries = 5;
     let retries = 0;
 
@@ -23,7 +51,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         this.client = createClient({
           url: process.env.REDIS_URL || 'redis://localhost:6379',
           socket: {
-            reconnectStrategy: (retries) => {
+            reconnectStrategy: (retries: number) => {
               if (retries > 10) {
                 this.logger.error('Max Redis reconnection attempts reached');
                 return new Error('Max reconnection attempts reached');
@@ -33,8 +61,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
           },
         });
 
-        this.client.on('error', (err) => {
-          this.logger.error('Redis Client Error', err);
+        this.client.on('error', (err: Error) => {
+          this.logger.error('Redis Client Error', err.message);
         });
 
         this.client.on('connect', () => {
@@ -54,9 +82,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return;
       } catch (error) {
         retries++;
+        const errorMessage =
+          error instanceof Error ? error.message : 'Unknown error';
         this.logger.error(
           `Failed to connect to Redis (attempt ${retries}/${maxRetries})`,
-          error,
+          errorMessage,
         );
         if (retries < maxRetries) {
           await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -67,72 +97,97 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     throw new Error('Could not connect to Redis after multiple attempts');
   }
 
-  private async disconnect() {
+  private async disconnect(): Promise<void> {
     if (this.client) {
       await this.client.quit();
       this.logger.log('Redis connection closed');
     }
   }
 
-  // Set a value with optional TTL
-  async set(key: string, value: any, ttlSeconds?: number): Promise<void> {
+  private ensureClient(): RedisClientType {
+    if (!this.client) {
+      throw new Error('Redis client not initialized');
+    }
+    return this.client;
+  }
+
+  async set(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
     try {
+      const client = this.ensureClient();
       const serialized = JSON.stringify(value);
       if (ttlSeconds) {
-        await this.client.setEx(key, ttlSeconds, serialized);
+        await client.setEx(key, ttlSeconds, serialized);
       } else {
-        await this.client.set(key, serialized);
+        await client.set(key, serialized);
       }
     } catch (error) {
-      this.logger.error(`Failed to set key: ${key}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to set key: ${key}`, errorMessage);
       throw error;
     }
   }
 
-  // Get a value by key
   async get<T>(key: string): Promise<T | null> {
     try {
-      const value = await this.client.get(key);
-      return value ? JSON.parse(value) : null;
+      const client = this.ensureClient();
+      const value = await client.get(key);
+      return value ? (JSON.parse(value) as T) : null;
     } catch (error) {
-      this.logger.error(`Failed to get key: ${key}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to get key: ${key}`, errorMessage);
       return null;
     }
   }
 
-  // Delete a key
   async delete(key: string): Promise<void> {
     try {
-      await this.client.del(key);
+      const client = this.ensureClient();
+      await client.del(key);
     } catch (error) {
-      this.logger.error(`Failed to delete key: ${key}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to delete key: ${key}`, errorMessage);
       throw error;
     }
   }
 
-  // Check if key exists
   async exists(key: string): Promise<boolean> {
     try {
-      const result = await this.client.exists(key);
+      const client = this.ensureClient();
+      const result = await client.exists(key);
       return result === 1;
     } catch (error) {
-      this.logger.error(`Failed to check existence of key: ${key}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        `Failed to check existence of key: ${key}`,
+        errorMessage,
+      );
       return false;
     }
   }
 
-  // Set expiration on a key
   async expire(key: string, seconds: number): Promise<void> {
     try {
-      await this.client.expire(key, seconds);
+      const client = this.ensureClient();
+      await client.expire(key, seconds);
     } catch (error) {
-      this.logger.error(`Failed to set expiration on key: ${key}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        `Failed to set expiration on key: ${key}`,
+        errorMessage,
+      );
       throw error;
     }
   }
 
-  // Check and mark request as processed (idempotency)
-  async checkAndMarkProcessed(requestId: string, ttlSeconds: number = 86400): Promise<boolean> {
+  async checkAndMarkProcessed(
+    requestId: string,
+    ttlSeconds: number = 86400,
+  ): Promise<boolean> {
     const key = `idempotency:${requestId}`;
     try {
       const exists = await this.exists(key);
@@ -141,41 +196,52 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return true;
       }
 
-      await this.set(key, { processed_at: new Date().toISOString() }, ttlSeconds);
+      const record: IdempotencyRecord = {
+        processed_at: new Date().toISOString(),
+      };
+      await this.set(key, record, ttlSeconds);
       return false;
     } catch (error) {
-      this.logger.error(`Idempotency check failed for: ${requestId}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        `Idempotency check failed for: ${requestId}`,
+        errorMessage,
+      );
       return false;
     }
   }
 
-  // Clear idempotency record (use with caution)
   async clearIdempotency(requestId: string): Promise<void> {
     const key = `idempotency:${requestId}`;
     await this.delete(key);
   }
 
-  // Increment rate limit counter
   async incrementRateLimit(
     identifier: string,
     windowSeconds: number = 60,
   ): Promise<number> {
     const key = `rate_limit:${identifier}`;
     try {
-      const count = await this.client.incr(key);
-      
+      const client = this.ensureClient();
+      const count = await client.incr(key);
+
       if (count === 1) {
         await this.expire(key, windowSeconds);
       }
-      
+
       return count;
     } catch (error) {
-      this.logger.error(`Rate limit increment failed for: ${identifier}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        `Rate limit increment failed for: ${identifier}`,
+        errorMessage,
+      );
       return 0;
     }
   }
 
-  // Check if rate limit exceeded
   async isRateLimitExceeded(
     identifier: string,
     maxRequests: number,
@@ -185,158 +251,174 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     return count > maxRequests;
   }
 
-  // Get remaining rate limit quota
   async getRateLimitRemaining(
     identifier: string,
     maxRequests: number,
   ): Promise<number> {
     const key = `rate_limit:${identifier}`;
     try {
-      const countStr = await this.client.get(key);
+      const client = this.ensureClient();
+      const countStr = await client.get(key);
       const count = countStr ? parseInt(countStr, 10) : 0;
       return Math.max(0, maxRequests - count);
     } catch (error) {
-      this.logger.error(`Failed to get rate limit for: ${identifier}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        `Failed to get rate limit for: ${identifier}`,
+        errorMessage,
+      );
       return maxRequests;
     }
   }
 
-  // Cache email template
   async cacheTemplate(
     templateCode: string,
     content: string,
     ttlSeconds: number = 3600,
   ): Promise<void> {
     const key = `template:${templateCode}`;
-    await this.set(key, { content, cached_at: new Date().toISOString() }, ttlSeconds);
+    const template: CachedTemplate = {
+      content,
+      cached_at: new Date().toISOString(),
+    };
+    await this.set(key, template, ttlSeconds);
   }
 
-  // Get cached template
   async getCachedTemplate(templateCode: string): Promise<string | null> {
     const key = `template:${templateCode}`;
-    const cached = await this.get<{ content: string }>(key);
+    const cached = await this.get<CachedTemplate>(key);
     return cached ? cached.content : null;
   }
 
-  // Invalidate template cache
   async invalidateTemplate(templateCode: string): Promise<void> {
     const key = `template:${templateCode}`;
     await this.delete(key);
   }
 
-  // Cache user notification preferences
-  async cacheUserPreferences(
+  async cacheUserPreferences<T>(
     userId: string,
-    preferences: any,
+    preferences: T,
     ttlSeconds: number = 1800,
   ): Promise<void> {
     const key = `user_prefs:${userId}`;
     await this.set(key, preferences, ttlSeconds);
   }
 
-  // Get cached user preferences
-  async getCachedUserPreferences(userId: string): Promise<any | null> {
+  async getCachedUserPreferences<T>(userId: string): Promise<T | null> {
     const key = `user_prefs:${userId}`;
-    return await this.get(key);
+    return await this.get<T>(key);
   }
 
-  // Store circuit breaker state (for distributed systems)
   async setCircuitBreakerState(
     serviceName: string,
     state: 'OPEN' | 'CLOSED' | 'HALF_OPEN',
-    metadata: any = {},
+    metadata: CircuitBreakerMetadata = {},
   ): Promise<void> {
     const key = `circuit_breaker:${serviceName}`;
-    await this.set(
-      key,
-      {
-        state,
-        ...metadata,
-        updated_at: new Date().toISOString(),
-      },
-      5 * 60,
-    );
+    const stateData: CircuitBreakerState = {
+      state,
+      ...metadata,
+      updated_at: new Date().toISOString(),
+    };
+    await this.set(key, stateData, 5 * 60);
   }
 
-  // Get circuit breaker state
-  async getCircuitBreakerState(serviceName: string): Promise<any | null> {
+  async getCircuitBreakerState(
+    serviceName: string,
+  ): Promise<CircuitBreakerState | null> {
     const key = `circuit_breaker:${serviceName}`;
-    return await this.get(key);
+    return await this.get<CircuitBreakerState>(key);
   }
 
-  // Increment counter (for metrics)
   async incrementCounter(metric: string, amount: number = 1): Promise<void> {
     const key = `metric:${metric}`;
     try {
-      await this.client.incrBy(key, amount);
+      const client = this.ensureClient();
+      await client.incrBy(key, amount);
     } catch (error) {
-      this.logger.error(`Failed to increment counter: ${metric}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to increment counter: ${metric}`, errorMessage);
     }
   }
 
-  // Get counter value
   async getCounter(metric: string): Promise<number> {
     const key = `metric:${metric}`;
     try {
-      const value = await this.client.get(key);
+      const client = this.ensureClient();
+      const value = await client.get(key);
       return value ? parseInt(value, 10) : 0;
     } catch (error) {
-      this.logger.error(`Failed to get counter: ${metric}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to get counter: ${metric}`, errorMessage);
       return 0;
     }
   }
 
-  async pushToList(key: string, value: any): Promise<void> {
+  async pushToList(key: string, value: unknown): Promise<void> {
     try {
-      await this.client.rPush(key, JSON.stringify(value));
+      const client = this.ensureClient();
+      await client.rPush(key, JSON.stringify(value));
     } catch (error) {
-      this.logger.error(`Failed to push to list: ${key}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to push to list: ${key}`, errorMessage);
       throw error;
     }
   }
 
-  // Pop from list
   async popFromList<T>(key: string): Promise<T | null> {
     try {
-      const value = await this.client.lPop(key);
-      return value ? JSON.parse(value) : null;
+      const client = this.ensureClient();
+      const value = await client.lPop(key);
+      return value ? (JSON.parse(value) as T) : null;
     } catch (error) {
-      this.logger.error(`Failed to pop from list: ${key}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to pop from list: ${key}`, errorMessage);
       return null;
     }
   }
 
-  // Get list length
   async getListLength(key: string): Promise<number> {
     try {
-      return await this.client.lLen(key);
+      const client = this.ensureClient();
+      return await client.lLen(key);
     } catch (error) {
-      this.logger.error(`Failed to get list length: ${key}`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Failed to get list length: ${key}`, errorMessage);
       return 0;
     }
   }
 
-  // Check Redis connection health
   async ping(): Promise<boolean> {
     try {
-      const result = await this.client.ping();
+      const client = this.ensureClient();
+      const result = await client.ping();
       return result === 'PONG';
     } catch (error) {
-      this.logger.error('Redis ping failed', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error('Redis ping failed', errorMessage);
       return false;
     }
   }
 
-  // Get Redis info
-  async getInfo(): Promise<any> {
+  async getInfo(): Promise<{ connected: boolean; info?: string }> {
     try {
-      const info = await this.client.info();
+      const client = this.ensureClient();
+      const info = await client.info();
       return {
-        connected: this.client.isReady,
+        connected: client.isReady,
         info: info,
       };
     } catch (error) {
-      this.logger.error('Failed to get Redis info', error);
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error('Failed to get Redis info', errorMessage);
       return { connected: false };
     }
   }
