@@ -50,7 +50,7 @@ describe('EmailService', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.message_id).toBe(mockMessageId);
+      expect(result.messageId).toBe(mockMessageId);
       expect(mockCircuitBreaker.execute).toHaveBeenCalledTimes(1);
       expect(mockTransporter.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -106,7 +106,7 @@ describe('EmailService', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toBe(errorMessage);
-      expect(result.message_id).toBeUndefined();
+      expect(result.messageId).toBeUndefined();
     });
 
     it('should use circuit breaker for execution', async () => {

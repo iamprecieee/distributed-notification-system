@@ -1,29 +1,13 @@
-import { CircuitState } from '../enums/index.enums';
-
-export type TemplateVariableValue =
-  | string
-  | number
-  | boolean
-  | null
-  | undefined;
-
-export interface TemplateVariables {
-  name?: string;
-  link?: string;
-  subject?: string;
-  message?: string;
-  title?: string;
-  [key: string]: TemplateVariableValue;
-}
+import { CircuitState } from "../enums/index.enums";
 
 export interface EmailMessage {
   notification_id: string;
   user_id: string;
   template_code: string;
-  variables: TemplateVariables;
+  variables: Record<string, any>;
   request_id: string;
   priority: number;
-  metadata?: Record<string, TemplateVariableValue>;
+  metadata?: Record<string, any>;
   to_email: string;
   retry_count?: number;
 }

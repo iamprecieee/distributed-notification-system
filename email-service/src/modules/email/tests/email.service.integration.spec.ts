@@ -52,14 +52,12 @@ describe('EmailService Integration Tests', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.message_id).toBeDefined();
+      expect(result.messageId).toBeDefined();
       expect(result.error).toBeUndefined();
 
       // Get preview URL
-      if (result.message_id) {
-        const previewUrl = nodemailer.getTestMessageUrl({
-          messageId: result.message_id,
-        } as nodemailer.SentMessageInfo);
+      if (result.messageId) {
+        const previewUrl = nodemailer.getTestMessageUrl({messageId: result.messageId} as nodemailer.SentMessageInfo);
         console.log('📧 Preview email at:', previewUrl);
       }
     }, 10000);
@@ -73,11 +71,9 @@ describe('EmailService Integration Tests', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.message_id).toBeDefined();
+      expect(result.messageId).toBeDefined();
 
-      const previewUrl = nodemailer.getTestMessageUrl({
-        messageId: result.message_id,
-      } as nodemailer.SentMessageInfo);
+        const previewUrl = nodemailer.getTestMessageUrl({messageId: result.messageId} as nodemailer.SentMessageInfo);
       console.log('📧 Preview email at:', previewUrl);
     }, 10000);
 
@@ -99,11 +95,9 @@ describe('EmailService Integration Tests', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.message_id).toBeDefined();
+      expect(result.messageId).toBeDefined();
 
-      const previewUrl = nodemailer.getTestMessageUrl({
-        messageId: result.message_id,
-      } as nodemailer.SentMessageInfo);
+        const previewUrl = nodemailer.getTestMessageUrl({messageId: result.messageId} as nodemailer.SentMessageInfo);
       console.log('📧 Preview email at:', previewUrl);
     }, 10000);
   });
@@ -187,17 +181,13 @@ describe('EmailService Integration Tests', () => {
       expect(results).toHaveLength(3);
       results.forEach((result) => {
         expect(result.success).toBe(true);
-        expect(result.message_id).toBeDefined();
+        expect(result.messageId).toBeDefined();
       });
 
       console.log('📧 All emails sent successfully');
       results.forEach((result, i) => {
-        console.log(
-          `   Email ${i + 1}:`,
-          nodemailer.getTestMessageUrl({
-            messageId: result.message_id,
-          } as nodemailer.SentMessageInfo),
-        );
+        console.log(`   Email ${i + 1}:`, nodemailer.getTestMessageUrl({messageId: result.messageId} as nodemailer.SentMessageInfo));
+
       });
     }, 30000);
 
@@ -209,13 +199,13 @@ describe('EmailService Integration Tests', () => {
       }));
 
       const results = await Promise.all(
-        emails.map((email) => service.sendEmail(email)),
+        emails.map((email) => service.sendEmail(email))
       );
 
       expect(results).toHaveLength(5);
       results.forEach((result) => {
         expect(result.success).toBe(true);
-        expect(result.message_id).toBeDefined();
+        expect(result.messageId).toBeDefined();
       });
 
       console.log('📧 All concurrent emails sent successfully');
