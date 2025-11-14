@@ -72,6 +72,7 @@ export class NotificationService {
         timestamp: new Date().toISOString(),
         push_token: user.push_token,
         ...dto,
+        to_email: user.email,
       };
 
       for (const queue of queues) {

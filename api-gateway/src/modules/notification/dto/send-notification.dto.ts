@@ -16,6 +16,7 @@ export enum NotificationType {
 export type UserData = {
   name: string;
   link: string;
+  subject: string;
   // meta?: Record<string, any>;
 };
 
