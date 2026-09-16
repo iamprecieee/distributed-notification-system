@@ -1,0 +1,21 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "dev",
+    "feat/audit-logs",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "dev": "main",
+    "feat/audit-logs": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "dev",
+    "feat/audit-logs",
+    "origin"
+  ]
+}
